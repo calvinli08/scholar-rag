@@ -1,0 +1,51 @@
+# ── Core ──────────────────────────────────────────────────────────────────────
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+
+# ── PDF parsing ───────────────────────────────────────────────────────────────
+pymupdf>=1.24          # fitz — structure-aware PDF extraction
+pdfplumber>=0.11       # table + figure caption extraction
+
+# ── Embeddings ────────────────────────────────────────────────────────────────
+sentence-transformers>=3.0   # HuggingFace local embeddings (EMBED_BACKEND=hf)
+openai>=1.30                 # OpenAI Embeddings + LLM (hosted fallback)
+cohere>=5.5                  # Cohere Embed + Rerank (hosted fallback)
+
+# ── Vector store ──────────────────────────────────────────────────────────────
+psycopg[binary]>=3.1         # Postgres driver (pgvector)
+pgvector>=0.3                # pgvector Python client
+
+# ── Sparse retrieval ──────────────────────────────────────────────────────────
+rank-bm25>=0.2
+
+# ── Reranking ─────────────────────────────────────────────────────────────────
+# HuggingFace cross-encoders are covered by sentence-transformers above
+
+# ── LLM backends ─────────────────────────────────────────────────────────────
+anthropic>=0.28              # Anthropic API (hosted fallback)
+transformers>=4.41           # HuggingFace causal LMs (LLM_BACKEND=hf)
+torch>=2.3                   # Required by transformers + sentence-transformers
+accelerate>=0.30             # Multi-GPU / device_map support for HF models
+# ollama — no Python package needed; uses OpenAI-compatible REST endpoint
+# vllm   — install separately: pip install vllm (CUDA required)
+
+# ── Tokenisation ─────────────────────────────────────────────────────────────
+tiktoken>=0.7                # Token counting for context budget
+
+# ── API ───────────────────────────────────────────────────────────────────────
+fastapi>=0.111
+uvicorn[standard]>=0.29
+
+# ── Frontend ──────────────────────────────────────────────────────────────────
+streamlit>=1.35
+
+# ── Evaluation ────────────────────────────────────────────────────────────────
+ragas>=0.1.9
+datasets>=2.19               # Required by RAGAS
+
+# ── Dev / testing ─────────────────────────────────────────────────────────────
+pytest>=8.2
+pytest-asyncio>=0.23
+httpx>=0.27                  # Async test client for FastAPI
+ruff>=0.4                    # Linting
