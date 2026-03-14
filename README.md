@@ -1,7 +1,6 @@
 # 📚 ScholarRAG — Retrieval-Augmented Generation for Academic Research
 
-> Ask questions across research papers. Get cited, grounded answers.  
-> Built to demonstrate production-grade AI engineering: hybrid retrieval, query expansion, reranking, and eval.
+> Ask questions across research papers. Get cited, grounded answers.
 
 ---
 
@@ -9,7 +8,7 @@
 
 LLMs hallucinate. Academic research demands precision. ScholarRAG bridges the gap by grounding every answer in retrieved source material — with inline citations traceable to the original paper, section, and page.
 
-This is not a tutorial chatbot. It's a system designed to handle real challenges in academic RAG:
+ScholarRAG is designed to handle real challenges in academic RAG:
 - **Dense academic language** that defeats naive keyword search
 - **Long papers** that require smarter chunking than fixed token windows
 - **Multi-paper queries** that demand cross-document reasoning
