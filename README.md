@@ -63,6 +63,15 @@ Short natural language queries fail against dense academic text. [HyDE (Hypothet
 ### 🏆 Cross-Encoder Reranking
 After initial retrieval (top-50), a `cross-encoder/ms-marco-MiniLM-L-6-v2` reranker rescores chunk-query pairs for precision. Top-8 chunks form the context window.
 
+### 🖥️ Local LLM Support
+ScholarRAG runs fully offline. The LLM backend is provider-agnostic:
+- **Ollama** — run `llama3`, `mistral`, `phi3`, or any GGUF model locally via a drop-in OpenAI-compatible endpoint
+- **HuggingFace Transformers** — load any `AutoModelForCausalLM` model directly (Mistral-7B, Qwen2, Gemma-2 etc.)
+- **vLLM** — production-grade local inference with PagedAttention for higher throughput
+- **Hosted fallback** — OpenAI / Anthropic APIs still supported via the same interface
+
+Switch backends with a single env variable: `LLM_BACKEND=ollama|hf|vllm|openai|anthropic`
+
 ### 📊 Evaluation Built In
 RAG without eval is guesswork. ScholarRAG ships with:
 - **Faithfulness** — does the answer contradict any retrieved chunk? (LLM-as-judge)
@@ -83,7 +92,9 @@ Eval harness uses [RAGAS](https://github.com/explodinggradients/ragas) + a curat
 | Vector DB | `pgvector` (Postgres) | Familiar, production-proven |
 | Keyword index | `rank_bm25` | Fast, no infra overhead |
 | Reranker | `cross-encoder/ms-marco` | Precision without latency |
-| LLM | `gpt-4o-mini` / `claude-3-5-haiku` | Cost-efficient for demos |
+| LLM (local) | `Ollama` + `llama3` / `mistral` | Zero API cost, fully offline |
+| LLM (hosted) | `gpt-4o-mini` / `claude-3-5-haiku` | Fallback for production |
+| Inference server | `vLLM` | High-throughput local serving |
 | Eval | `RAGAS` | Industry standard RAG eval |
 | API | `FastAPI` | Async, OpenAPI docs out of box |
 | Frontend | `Streamlit` | Fastest path to a shareable demo |
@@ -140,7 +151,25 @@ pip install -r requirements.txt
 
 # Set credentials
 cp .env.example .env
-# Add OPENAI_API_KEY (or ANTHROPIC_API_KEY), DATABASE_URL
+# Choose your LLM backend:
+#   LLM_BACKEND=ollama        (local, recommended)
+#   LLM_BACKEND=hf            (local HuggingFace)
+#   LLM_BACKEND=vllm          (local, high-throughput)
+#   LLM_BACKEND=openai        (hosted fallback)
+#   LLM_BACKEND=anthropic     (hosted fallback)
+
+# Option A — Local with Ollama (no API key needed)
+ollama pull llama3
+export LLM_BACKEND=ollama
+export OLLAMA_MODEL=llama3
+
+# Option B — Local with HuggingFace
+export LLM_BACKEND=hf
+export HF_MODEL_ID=mistralai/Mistral-7B-Instruct-v0.3
+
+# Option C — Hosted API
+export LLM_BACKEND=openai
+export OPENAI_API_KEY=sk-...
 
 # Ingest a paper
 python -m ingestion.pdf_parser --input papers/attention_is_all_you_need.pdf
@@ -174,6 +203,12 @@ Evaluated on 10 ML papers (Attention, BERT, LoRA, GPT-3, RAG original paper, etc
 ---
 
 ## Design Decisions & Tradeoffs
+
+**Why support local LLMs at all?**  
+Three reasons: zero inference cost during development, no data leaving your machine (important for proprietary research), and it's a stronger portfolio signal than "I called the OpenAI API". The abstraction layer also makes it easy to benchmark quality vs cost across backends.
+
+**Why Ollama over raw HuggingFace for local inference?**  
+Ollama handles model quantization, memory management, and exposes an OpenAI-compatible REST endpoint — so the same `llm_client.py` works for both. Raw HuggingFace is also supported for models not yet on Ollama, or when you need finer control over generation parameters.
 
 **Why pgvector over Pinecone/Weaviate?**  
 Fewer moving parts for a single-developer project. If this scales, the switch to a dedicated vector DB is straightforward — the retrieval interface is abstracted.
