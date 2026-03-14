@@ -1,6 +1,6 @@
 # 📚 ScholarRAG — Retrieval-Augmented Generation for Academic Research
 
-> Ask questions across research papers. Get cited, grounded answers.
+> Ask questions across research papers. Get cited, grounded answers.  
 
 ---
 
@@ -46,9 +46,13 @@ See [`docs/architecture.md`](docs/architecture.md) for component-level detail.
 
 ### 🔍 Hybrid Retrieval (Dense + Sparse)
 Dense vector search alone misses exact terminology — critical in scientific literature. ScholarRAG combines:
-- **Dense retrieval** via `text-embedding-3-large` (OpenAI) stored in pgvector
-- **BM25 keyword search** via Elasticsearch/OpenSearch as a fallback
+- **Dense retrieval** via a configurable embedding backend (see below), vectors stored in pgvector
+- **BM25 keyword search** via `rank_bm25` as a complementary sparse signal
 - **Reciprocal Rank Fusion (RRF)** to merge ranked lists without score normalization headaches
+
+**Embedding backends** — switch via `EMBED_BACKEND`:
+- **Local:** any HuggingFace Sentence Transformers embedding model — runs on CPU or GPU, no API key needed
+- **Hosted:** `text-embedding-3-large` (OpenAI) or `embed-english-v3.0` (Cohere) for maximum retrieval quality
 
 ### 📄 Semantic Chunking for Research Papers
 Fixed-size chunking destroys paper structure. Instead:
@@ -60,7 +64,11 @@ Fixed-size chunking destroys paper structure. Instead:
 Short natural language queries fail against dense academic text. [HyDE (Hypothetical Document Embeddings)](https://arxiv.org/abs/2212.10496) generates a hypothetical answer first, embeds *that*, and uses it to retrieve — dramatically improving recall on technical queries.
 
 ### 🏆 Cross-Encoder Reranking
-After initial retrieval (top-50), a `cross-encoder/ms-marco-MiniLM-L-6-v2` reranker rescores chunk-query pairs for precision. Top-8 chunks form the context window.
+After initial retrieval (top-50), a reranker rescores chunk-query pairs for precision. Top-8 chunks form the context window.
+
+**Reranker backends** — switch via `RERANKER_BACKEND`:
+- **Local:** any HuggingFace cross-encoder model — runs entirely on CPU, no API key needed
+- **Hosted:** Cohere Rerank API — best out-of-the-box quality, easy to swap in for production
 
 ### 🖥️ Local LLM Support
 ScholarRAG runs fully offline. The LLM backend is provider-agnostic:
@@ -82,64 +90,6 @@ Eval harness uses [RAGAS](https://github.com/explodinggradients/ragas) + a curat
 
 ---
 
-## Stack
-
-| Layer | Choice | Why |
-|---|---|---|
-| PDF parsing | `PyMuPDF` + `pdfplumber` | Structure-aware extraction |
-| Embeddings | `text-embedding-3-large` | Best MTEB retrieval scores |
-| Vector DB | `pgvector` (Postgres) | Familiar, production-proven |
-| Keyword index | `rank_bm25` | Fast, no infra overhead |
-| Reranker | `cross-encoder/ms-marco` | Precision without latency |
-| LLM (local) | `Ollama` + `llama3` / `mistral` | Zero API cost, fully offline |
-| LLM (hosted) | `gpt-4o-mini` / `claude-3-5-haiku` | Fallback for production |
-| Inference server | `vLLM` | High-throughput local serving |
-| Eval | `RAGAS` | Industry standard RAG eval |
-| API | `FastAPI` | Async, OpenAPI docs out of box |
-| Frontend | `Streamlit` | Fastest path to a shareable demo |
-
----
-
-## Project Structure
-
-```
-scholar-rag/
-├── ingestion/
-│   ├── pdf_parser.py          # Section-aware PDF extraction
-│   ├── chunker.py             # Semantic sliding window chunker
-│   ├── embedder.py            # Batch embedding with retry logic
-│   └── indexer.py             # pgvector + BM25 write path
-├── retrieval/
-│   ├── dense_retriever.py     # ANN search via pgvector
-│   ├── sparse_retriever.py    # BM25 keyword search
-│   ├── hybrid.py              # RRF fusion
-│   ├── reranker.py            # Cross-encoder reranking
-│   └── query_expander.py      # HyDE expansion
-├── generation/
-│   ├── prompt_builder.py      # Context assembly + token budgeting
-│   ├── llm_client.py          # LLM abstraction (OpenAI / Anthropic)
-│   └── citation_formatter.py  # Inline citation injection
-├── eval/
-│   ├── test_set.json          # 50 Q&A triples across 10 papers
-│   ├── metrics.py             # Faithfulness, recall, MRR
-│   └── run_eval.py            # Evaluation harness
-├── api/
-│   └── main.py                # FastAPI app
-├── frontend/
-│   └── app.py                 # Streamlit demo UI
-├── notebooks/
-│   ├── 01_ingestion_demo.ipynb
-│   ├── 02_retrieval_analysis.ipynb
-│   └── 03_eval_results.ipynb
-├── docs/
-│   └── architecture.md
-├── tests/
-├── requirements.txt
-└── README.md
-```
-
----
-
 ## Quickstart
 
 ```bash
@@ -150,25 +100,36 @@ pip install -r requirements.txt
 
 # Set credentials
 cp .env.example .env
-# Choose your LLM backend:
-#   LLM_BACKEND=ollama        (local, recommended)
-#   LLM_BACKEND=hf            (local HuggingFace)
-#   LLM_BACKEND=vllm          (local, high-throughput)
-#   LLM_BACKEND=openai        (hosted fallback)
-#   LLM_BACKEND=anthropic     (hosted fallback)
+# Choose your backends (all default to local if unset):
+#
+#   EMBED_BACKEND=hf            (local HuggingFace, default)
+#   EMBED_BACKEND=ollama        (local via Ollama)
+#   EMBED_BACKEND=openai        (hosted)
+#   EMBED_BACKEND=cohere        (hosted)
+#
+#   RERANKER_BACKEND=hf         (local cross-encoder, default)
+#   RERANKER_BACKEND=cohere     (hosted, higher quality)
+#
+#   LLM_BACKEND=ollama          (local, recommended)
+#   LLM_BACKEND=hf              (local HuggingFace)
+#   LLM_BACKEND=vllm            (local, high-throughput)
+#   LLM_BACKEND=openai          (hosted fallback)
+#   LLM_BACKEND=anthropic       (hosted fallback)
 
-# Option A — Local with Ollama (no API key needed)
-ollama pull llama3
+# Fully local — zero API keys required
+export EMBED_BACKEND=hf
+export HF_EMBED_MODEL=<your-chosen-hf-embedding-model>
+export RERANKER_BACKEND=hf
+export RERANKER_MODEL=<your-chosen-hf-cross-encoder>
 export LLM_BACKEND=ollama
 export OLLAMA_MODEL=llama3
+ollama pull llama3
 
-# Option B — Local with HuggingFace
-export LLM_BACKEND=hf
-export HF_MODEL_ID=mistralai/Mistral-7B-Instruct-v0.3
-
-# Option C — Hosted API
-export LLM_BACKEND=openai
+# Hosted embeddings + reranker (higher quality, needs API keys)
+export EMBED_BACKEND=openai
 export OPENAI_API_KEY=sk-...
+export RERANKER_BACKEND=cohere
+export COHERE_API_KEY=...
 
 # Ingest a paper
 python -m ingestion.pdf_parser --input papers/attention_is_all_you_need.pdf
@@ -186,66 +147,19 @@ python eval/run_eval.py --test-set eval/test_set.json
 
 ---
 
-## Eval Results (Baseline)
-
-Evaluated on 10 ML papers (Attention, BERT, LoRA, GPT-3, RAG original paper, etc.) with 50 question-answer pairs.
-
-| Metric | Score |
-|---|---|
-| Faithfulness | 0.87 |
-| Answer Recall | 0.79 |
-| Context Precision | 0.82 |
-| MRR@10 | 0.74 |
-
-> Hybrid retrieval + reranking improved MRR@10 by **+0.18** over dense-only baseline. HyDE expansion added another **+0.06** on technical queries.
-
----
-
 ## Design Decisions & Tradeoffs
 
+**Why support local embeddings?**  
+HuggingFace Sentence Transformers gives you access to a wide range of well-benchmarked embedding models that run entirely offline. For a project ingesting potentially sensitive research, keeping embeddings local removes a meaningful data exposure risk — and it eliminates per-token API costs during the ingestion phase entirely.
+
+**Why two reranker options (local vs hosted)?**  
+A HuggingFace cross-encoder runs on CPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference. Having both shows you understand the tradeoff between operational simplicity and retrieval precision.
+
 **Why support local LLMs at all?**  
-Three reasons: zero inference cost during development, no data leaving your machine (important for proprietary research), and it's a stronger portfolio signal than "I called the OpenAI API". The abstraction layer also makes it easy to benchmark quality vs cost across backends.
-
-**Why Ollama over raw HuggingFace for local inference?**  
-Ollama handles model quantization, memory management, and exposes an OpenAI-compatible REST endpoint — so the same `llm_client.py` works for both. Raw HuggingFace is also supported for models not yet on Ollama, or when you need finer control over generation parameters.
-
-**Why pgvector over Pinecone/Weaviate?**  
-Fewer moving parts for a single-developer project. If this scales, the switch to a dedicated vector DB is straightforward — the retrieval interface is abstracted.
+Two reasons: zero inference cost during development, no data leaving your machine (important for proprietary research).
 
 **Why HyDE over multi-query expansion?**  
 HyDE generates one high-quality hypothetical document. Multi-query generates N queries. For academic search, one good embedding outperforms averaging N noisy ones — at lower cost.
 
 **Why not ColBERT (late interaction)?**  
 ColBERT is genuinely better for this domain. Excluded from v1 due to infrastructure cost and index complexity. Tracked in `docs/future_work.md`.
-
-**Why RAGAS over hand-rolled metrics?**  
-RAGAS is the de facto standard. Using it makes results comparable and credible to anyone reading this repo.
-
----
-
-## What I'd Do With More Time
-
-- [ ] ColBERT late-interaction retrieval for better chunk-level scoring
-- [ ] Citation graph traversal — retrieve *related* papers from the reference list
-- [ ] Streaming responses via SSE
-- [ ] Paper ingestion directly from arXiv API by ID
-- [ ] Fine-tune a domain-specific reranker on scientific QA pairs
-
----
-
-## Blog Posts / Writeups
-
-- *Why fixed-size chunking fails on research papers* — [link]
-- *HyDE vs multi-query: a retrieval benchmark* — [link]
-- *RAG evaluation that actually means something* — [link]
-
----
-
-## License
-
-MIT. Use freely, attribution appreciated.
-
----
-
-*Built by [Your Name] — AI Engineer. Open to roles focused on LLM systems, retrieval, and applied ML.*  
-*[LinkedIn](https://linkedin.com/in/yourprofile) · [GitHub](https://github.com/yourusername)*
