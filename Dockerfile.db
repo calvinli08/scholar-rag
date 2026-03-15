@@ -1,0 +1,24 @@
+# PostgreSQL 16 with pgvector extension
+# Uses the official pgvector image which is built on top of the official
+# Postgres image — no manual compilation needed.
+#
+# Build:  docker build -t scholarrag-db .
+# Run:    docker-compose up -d   (preferred — see docker-compose.yml)
+
+FROM pgvector/pgvector:pg16
+
+# ── Locale & timezone ────────────────────────────────────────────────────────
+ENV LANG=en_US.utf8 \
+    TZ=UTC
+
+# ── Copy init scripts ────────────────────────────────────────────────────────
+# Postgres runs every *.sql and *.sh file in this directory on first start,
+# in alphabetical order. Prefixing with numbers controls execution order.
+COPY docker/init/ /docker-entrypoint-initdb.d/
+
+# ── Healthcheck ──────────────────────────────────────────────────────────────
+# Used by docker-compose depends_on condition: service_healthy
+HEALTHCHECK --interval=5s --timeout=5s --retries=10 \
+    CMD pg_isready -U "${POSTGRES_USER:-scholarrag}" -d "${POSTGRES_DB:-scholarrag}"
+
+EXPOSE 5432
