@@ -1,17 +1,44 @@
 import os
 from typing import TypedDict, List, Dict, Any, Optional
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 from api.retriever import Retriever
 from api.embedder import Embedder
+from config import settings
 
 # Configuration
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 GROUNDING_THRESHOLD = 0.9
 MAX_RETRIES = 2
+
+
+def get_llm_instance():
+    """Initialize the LLM based on settings.llm_backend."""
+    backend = settings.llm_backend.lower()
+    
+    if backend == "openai":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=settings.openai_model,
+            temperature=settings.llm_temperature,
+            api_key=settings.openai_api_key
+        )
+    elif backend == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            model=settings.anthropic_model,
+            temperature=settings.llm_temperature,
+            api_key=settings.anthropic_api_key
+        )
+    elif backend == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=settings.ollama_model,
+            temperature=settings.llm_temperature,
+            base_url=settings.ollama_base_url
+        )
+    else:
+        raise ValueError(f"Unsupported LLM backend: {backend}")
 
 
 class RAGState(TypedDict):
@@ -27,9 +54,9 @@ class RAGState(TypedDict):
 def build_rag_graph():
     """Builds the LangGraph workflow for RAG with grounding evaluation."""
     
-    # Initialize components
-    llm = ChatOpenAI(model=LLM_MODEL, temperature=0)
-    embedder = Embedder(model_name=EMBEDDING_MODEL)
+    # Initialize components using settings from config
+    llm = get_llm_instance()
+    embedder = Embedder(backend=settings.embedding_backend, model_name=settings.openai_embed_model)
     retriever = Retriever(embedder=embedder)
     
     # --- Nodes ---
