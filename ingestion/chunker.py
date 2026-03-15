@@ -207,42 +207,4 @@ class Chunker:
         return list(self._chunk_section(fake_section, fake_doc))
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    import argparse
-    import sys
-
-    ap = argparse.ArgumentParser(description="Chunk a parsed PDF and print stats.")
-    ap.add_argument("--input", required=True, help="Path to PDF file")
-    ap.add_argument("--paper-id", default=None)
-    ap.add_argument(
-        "--chunk-size", type=int, default=settings.chunk_size
-    )
-    ap.add_argument(
-        "--chunk-overlap", type=int, default=settings.chunk_overlap
-    )
-    args = ap.parse_args()
-
-    from logger import configure_logging
-    configure_logging()
-
-    from ingestion.pdf_parser import PDFParser
-
-    doc = PDFParser().parse(args.input, paper_id=args.paper_id)
-    chunks = Chunker(
-        chunk_size=args.chunk_size,
-        chunk_overlap=args.chunk_overlap,
-    ).chunk_document(doc)
-
-    print(f"Total chunks : {len(chunks)}")
-    print(f"Avg tokens   : {sum(_token_count(c.text) for c in chunks) // len(chunks)}")
-    print()
-    for c in chunks[:5]:
-        print(f"  {c.chunk_id}")
-        print(f"  Section : {c.section}")
-        print(f"  Tokens  : {_token_count(c.text)}")
-        print(f"  Preview : {c.text[:100]!r}")
-        print()

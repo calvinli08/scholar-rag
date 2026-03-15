@@ -261,40 +261,4 @@ def get_embedder() -> BaseEmbedder:
     raise ValueError(f"Unknown EMBED_BACKEND: {backend!r}")
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    import argparse
-
-    ap = argparse.ArgumentParser(description="Embed all chunks for a paper and print stats.")
-    ap.add_argument("--input", required=True, help="Path to PDF")
-    ap.add_argument("--paper-id", default=None)
-    ap.add_argument("--run-all", action="store_true", help="Embed all PDFs in ./papers/")
-    args = ap.parse_args()
-
-    from logger import configure_logging
-    configure_logging()
-
-    from ingestion.chunker import Chunker
-    from ingestion.pdf_parser import PDFParser
-    import pathlib
-
-    parser = PDFParser()
-    chunker = Chunker()
-    embedder = get_embedder()
-
-    paths = (
-        list(pathlib.Path("papers").glob("*.pdf"))
-        if args.run_all
-        else [pathlib.Path(args.input)]
-    )
-
-    for pdf_path in paths:
-        doc = parser.parse(pdf_path, paper_id=args.paper_id)
-        chunks = chunker.chunk_document(doc)
-        embedded = embedder.embed_chunks(chunks)
-        non_null = sum(1 for c in embedded if c.embedding is not None)
-        print(f"{pdf_path.name}: {non_null}/{len(embedded)} chunks embedded "
-              f"(dim={embedder.dimension})")
