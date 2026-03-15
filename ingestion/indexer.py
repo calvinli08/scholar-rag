@@ -288,40 +288,4 @@ class Indexer:
         log.debug("pgvector: upserted %d rows into %r", len(rows), self._table)
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    import argparse
-
-    ap = argparse.ArgumentParser(
-        description="Ingest a PDF end-to-end: parse → chunk → embed → index."
-    )
-    ap.add_argument("--input", required=True, help="Path to PDF file")
-    ap.add_argument("--paper-id", default=None)
-    ap.add_argument(
-        "--force", action="store_true", help="Re-index even if paper already exists"
-    )
-    args = ap.parse_args()
-
-    from logger import configure_logging
-    configure_logging()
-
-    from ingestion.chunker import Chunker
-    from ingestion.embedder import get_embedder
-    from ingestion.pdf_parser import PDFParser
-
-    with Indexer() as indexer:
-        if indexer.paper_exists(args.paper_id or Path(args.input).stem) and not args.force:
-            print(f"Paper already indexed. Use --force to re-index.")
-        else:
-            parser = PDFParser()
-            chunker = Chunker()
-            embedder = get_embedder()
-
-            doc = parser.parse(args.input, paper_id=args.paper_id)
-            chunks = chunker.chunk_document(doc)
-            embedder.embed_chunks(chunks)
-            indexer.index(chunks)
-            print(f"Done. Total chunks in index: {indexer.chunk_count()}")

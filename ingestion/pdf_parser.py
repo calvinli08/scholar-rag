@@ -360,35 +360,4 @@ class PDFParser:
         return [e.strip() for e in entries if len(e.strip()) > 20]
 
 
-# ---------------------------------------------------------------------------
-# CLI entry point
-# ---------------------------------------------------------------------------
 
-if __name__ == "__main__":
-    import argparse, json, sys
-
-    ap = argparse.ArgumentParser(description="Parse a PDF and print section summaries.")
-    ap.add_argument("--input", required=True, help="Path to PDF file")
-    ap.add_argument("--paper-id", default=None, help="Optional paper identifier")
-    ap.add_argument("--json", action="store_true", help="Output full JSON")
-    args = ap.parse_args()
-
-    from logger import configure_logging
-    configure_logging()
-
-    parser = PDFParser()
-    doc = parser.parse(args.input, paper_id=args.paper_id)
-
-    if args.json:
-        import dataclasses
-        print(json.dumps(dataclasses.asdict(doc), indent=2, default=str))
-    else:
-        print(f"Title   : {doc.title}")
-        print(f"Authors : {', '.join(doc.authors)}")
-        print(f"Year    : {doc.year}")
-        print(f"Pages   : {doc.total_pages}")
-        print(f"Sections: {len(doc.sections)}")
-        for s in doc.sections:
-            print(f"  [{s.section_index:02d}] {s.title:<30} "
-                  f"p{s.page_start+1}-{s.page_end+1}  "
-                  f"({len(s.text)} chars)")

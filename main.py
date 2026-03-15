@@ -11,7 +11,7 @@ from pathlib import Path
 
 from api.retriever import retrieve_chunks
 from api.generator import generate_answer
-from ingestion.indexer import index_paper
+from ingestion.pipeline import ingest as ingest_paper
 from logger import get_logger
 from models import QueryResult, RetrievedChunk
 
@@ -155,8 +155,8 @@ async def process_ingestion(job_id: str, file_path: Path):
         ingestion_jobs[job_id]["status"] = "processing"
         log.info("Starting ingestion for job %s: %s", job_id, file_path)
         
-        # Run indexing
-        await index_paper(str(file_path))
+        # Run ingestion pipeline
+        ingest_paper(str(file_path))
         
         ingestion_jobs[job_id]["status"] = "completed"
         log.info("Ingestion completed for job %s", job_id)
