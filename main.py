@@ -3,15 +3,26 @@ Query and retrieval API for ScholarRAG.
 Provides FastAPI endpoints for semantic search and Q&A.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from pydantic import BaseModel, Field
+import os
+import uuid
+from pathlib import Path
 
 from api.retriever import retrieve_chunks
 from api.generator import generate_answer
+from ingestion.indexer import index_paper
 from logger import get_logger
 from models import QueryResult, RetrievedChunk
 
 log = get_logger(__name__)
+
+# Directory for uploaded files
+UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads"))
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+# Track ingestion jobs
+ingestion_jobs: dict[str, dict] = {}
 
 app = FastAPI(
     title="ScholarRAG API",
@@ -98,6 +109,79 @@ class SearchResponse(BaseModel):
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+
+@app.post("/ingest/upload")
+async def upload_paper(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """
+    Upload a PDF paper for ingestion.
+    Returns a job ID to track ingestion progress.
+    """
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted")
+    
+    # Generate unique job ID
+    job_id = str(uuid.uuid4())
+    
+    # Save uploaded file
+    file_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
+    try:
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        # Initialize job tracking
+        ingestion_jobs[job_id] = {
+            "status": "pending",
+            "filename": file.filename,
+            "path": str(file_path),
+            "error": None,
+        }
+        
+        # Start ingestion in background
+        background_tasks.add_task(process_ingestion, job_id, file_path)
+        
+        return {"job_id": job_id, "status": "pending"}
+    except Exception as e:
+        log.error("Upload failed: %s", e)
+        if file_path.exists():
+            file_path.unlink()
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+
+async def process_ingestion(job_id: str, file_path: Path):
+    """Process paper ingestion in the background."""
+    try:
+        ingestion_jobs[job_id]["status"] = "processing"
+        log.info("Starting ingestion for job %s: %s", job_id, file_path)
+        
+        # Run indexing
+        await index_paper(str(file_path))
+        
+        ingestion_jobs[job_id]["status"] = "completed"
+        log.info("Ingestion completed for job %s", job_id)
+    except Exception as e:
+        log.error("Ingestion failed for job %s: %s", job_id, e)
+        ingestion_jobs[job_id]["status"] = "failed"
+        ingestion_jobs[job_id]["error"] = str(e)
+
+
+@app.get("/ingest/status/{job_id}")
+async def get_ingestion_status(job_id: str):
+    """
+    Get the status of an ingestion job.
+    Returns job status: pending, processing, completed, or failed.
+    """
+    if job_id not in ingestion_jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = ingestion_jobs[job_id]
+    return {
+        "job_id": job_id,
+        "status": job["status"],
+        "filename": job["filename"],
+        "error": job["error"],
+    }
 
 
 @app.post("/search", response_model=SearchResponse)
