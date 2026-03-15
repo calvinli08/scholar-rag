@@ -47,8 +47,14 @@ CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw_idx
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
 
--- Full-text search fallback (pgvector for dense, this for sparse if BM25
--- in-process isn't preferred)
+-- BM25 full-text search index using pg_search
+-- This provides true BM25 scoring for sparse retrieval
+CREATE INDEX IF NOT EXISTS chunks_text_bm25_idx
+    ON chunks
+    USING bm25 (text)
+    WITH (key_field = 'chunk_id');
+
+-- Trigram similarity fallback (useful for fuzzy text search, optional)
 CREATE INDEX IF NOT EXISTS chunks_text_trgm_idx
     ON chunks
     USING gin (text gin_trgm_ops);

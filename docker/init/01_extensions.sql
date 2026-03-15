@@ -5,6 +5,9 @@
 -- pgvector: dense vector similarity search
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- pg_search: true BM25 full-text search extension
+CREATE EXTENSION IF NOT EXISTS pg_search;
+
 -- pg_trgm: trigram similarity (useful for fuzzy text search, optional)
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 

@@ -104,7 +104,7 @@ async def _dense_retrieve(query: str, k: int = 50) -> list[RetrievedChunk]:
 
 async def _sparse_retrieve(query: str, k: int = 50) -> list[RetrievedChunk]:
     """
-    Retrieve chunks using BM25 full-text search.
+    Retrieve chunks using BM25 full-text search via pg_search extension.
     
     Args:
         query: Query string for text search
@@ -116,21 +116,19 @@ async def _sparse_retrieve(query: str, k: int = 50) -> list[RetrievedChunk]:
     pool = get_pool()
     results = []
     
-    # Convert query to tsquery format
-    tsquery = " & ".join(query.split())
-    
     with pool.connection() as conn:
         with conn.cursor() as cur:
-            # Use PostgreSQL full-text search with ts_rank
+            # Use pg_search BM25 for true BM25 scoring
+            # The paradedb.score() function returns the BM25 score
             cur.execute("""
                 SELECT chunk_id, paper_id, text, section, page, chunk_index,
                        title, authors, year, doi, arxiv_id,
-                       ts_rank(to_tsvector('english', text), to_tsquery('english', %s)) AS rank
+                       paradedb.score(id => chunk_id) AS bm25_score
                 FROM chunks
-                WHERE to_tsvector('english', text) @@ to_tsquery('english', %s)
-                ORDER BY rank DESC
+                WHERE text @@@ %s
+                ORDER BY bm25_score DESC
                 LIMIT %s
-            """, (tsquery, tsquery, k))
+            """, (query, k))
             
             rows = cur.fetchall()
             
@@ -150,12 +148,12 @@ async def _sparse_retrieve(query: str, k: int = 50) -> list[RetrievedChunk]:
                 )
                 retrieved = RetrievedChunk(
                     chunk=chunk,
-                    score=row[11],  # BM25 rank
+                    score=row[11],  # BM25 score from pg_search
                     sparse_rank=len(results) + 1,
                 )
                 results.append(retrieved)
     
-    log.debug("Sparse retrieval returned %d chunks", len(results))
+    log.debug("Sparse retrieval (BM25 via pg_search) returned %d chunks", len(results))
     return results
 
 

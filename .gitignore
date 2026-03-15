@@ -1,68 +1,51 @@
 ```
-# Python
+# Compiled and build artifacts
+*.pyc
 __pycache__/
+*.o
+*.obj
+dist/
+build/
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# Python specific
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
-venv/
-.venv/
-.ENV
-.ENV.*
-.python-version
-.pytest_cache/
-.mypy_cache/
-.coverage
-coverage/
-htmlcov/
-
-# Dependencies
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage*
-.noserc
-.seleniumserverrc
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+*.so
 *.egg-info/
-.installed.cfg
-*.egg
+.eggs/
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
+# Database
+*.db
+*.sqlite
+*.sqlite3
 
-# Logs
-*.log
-
-# Environment variables
-.env
-.env.local
-*.env.*
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Docker
+.dockerenv
+.DS_STORE
 ```
