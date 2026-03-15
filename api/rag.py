@@ -4,7 +4,7 @@ from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
 
 from api.retriever import Retriever
-from api.embedder import Embedder
+from ingestion.embedder import get_embedder
 from config import settings
 
 # Configuration
@@ -56,7 +56,7 @@ def build_rag_graph():
     
     # Initialize components using settings from config
     llm = get_llm_instance()
-    embedder = Embedder(backend=settings.embedding_backend, model_name=settings.openai_embed_model)
+    embedder = get_embedder()
     retriever = Retriever(embedder=embedder)
     
     # --- Nodes ---
