@@ -45,6 +45,15 @@ streamlit>=1.35
 ragas>=0.1.9
 datasets>=2.19               # Required by RAGAS
 
+# ── Agentic Workflow (LangGraph/LangChain) ────────────────────────────────────
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+
+# ── Advanced Evaluation (DeepEval) ────────────────────────────────────────────
+deepeval>=2.0.0
+
 # ── Dev / testing ─────────────────────────────────────────────────────────────
 pytest>=8.2
 pytest-asyncio>=0.23

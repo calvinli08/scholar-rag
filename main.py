@@ -11,6 +11,7 @@ from pathlib import Path
 
 from api.retriever import retrieve_chunks
 from api.generator import generate_answer
+from api.rag import run_rag_workflow
 from ingestion.pipeline import ingest as ingest_paper
 from logger import get_logger
 from models import QueryResult, RetrievedChunk
@@ -202,28 +203,26 @@ async def search(request: SearchRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/query", response_model=QueryResponse)
+@app.post("/query")
 async def query(request: QueryRequest):
     """
-    Full RAG pipeline: retrieve chunks and generate an answer.
-    Returns answer with cited sources.
+    Full RAG pipeline with agentic grounding evaluation.
+    Uses LangGraph workflow with HyDE, retrieval, generation, and DeepEval grounding check.
+    Returns answer with cited sources and grounding score.
     """
     try:
-        # Retrieve relevant chunks
-        chunks = await retrieve_chunks(
-            query=request.query,
-            top_k=request.top_k,
-            use_reranker=request.use_reranker,
-        )
+        # Run the agentic RAG workflow
+        result = run_rag_workflow(request.query)
         
-        # Generate answer using retrieved context
-        result = await generate_answer(
-            query=request.query,
-            chunks=chunks,
-            use_hyde=request.use_hyde,
-        )
-        
-        return QueryResponse.from_result(result)
+        return {
+            "query": request.query,
+            "answer": result["answer"],
+            "sources": result["sources"],
+            "metadata": {
+                "grounding_score": result["grounding_score"],
+                "retries": result["retries"]
+            }
+        }
     except Exception as e:
         log.error("Query failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
