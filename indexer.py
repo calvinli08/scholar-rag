@@ -146,28 +146,6 @@ class BM25Index:
 # Indexer
 # ---------------------------------------------------------------------------
 
-_CREATE_TABLE = """
-CREATE TABLE IF NOT EXISTS {table} (
-    chunk_id    TEXT PRIMARY KEY,
-    paper_id    TEXT NOT NULL,
-    text        TEXT NOT NULL,
-    embedding   vector({dim}),
-    section     TEXT,
-    page        INT,
-    chunk_index INT,
-    title       TEXT,
-    authors     JSONB,
-    year        INT,
-    doi         TEXT,
-    arxiv_id    TEXT,
-    created_at  TIMESTAMPTZ DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS {table}_paper_id_idx ON {table} (paper_id);
-CREATE INDEX IF NOT EXISTS {table}_embedding_idx
-    ON {table} USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
-"""
-
 _UPSERT = """
 INSERT INTO {table}
     (chunk_id, paper_id, text, embedding, section, page, chunk_index,
@@ -281,16 +259,9 @@ class Indexer:
     # ------------------------------------------------------------------
 
     def _ensure_schema(self) -> None:
-        ddl = _CREATE_TABLE.format(table=self._table, dim=self._dim)
-        with self._conn.cursor() as cur:
-            # Enable pgvector extension if not already enabled
-            cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-            for statement in ddl.strip().split(";"):
-                statement = statement.strip()
-                if statement:
-                    cur.execute(statement)
-        self._conn.commit()
-        log.debug("Schema verified for table %r (dim=%d)", self._table, self._dim)
+        # Schema is already initialized by Docker on first start via
+        # docker/init/*.sql scripts. No action needed here.
+        pass
 
     def _write_pgvector(self, chunks: list[Chunk]) -> None:
         sql = _UPSERT.format(table=self._table)
