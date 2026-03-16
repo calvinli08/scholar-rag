@@ -103,14 +103,22 @@ class Settings(BaseSettings):
     chunk_size: int = 512       # tokens
     chunk_overlap: int = 128    # tokens
 
-    # -- Eval --
-    eval_test_set_path: str = "eval/test_set.json"
-    eval_output_path: str = "eval/results.json"
-
     # -- App --
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     log_level: str = "info"
+
+    # -- Ingestion --
+    upload_dir: str = "./uploads"
+
+    # -- Agentic RAG & Evaluation --
+    use_hyde: bool = True
+    grounding_threshold: float = 0.9
+    max_retries: int = 2
+
+    # -- Eval --
+    eval_test_set_path: str = "eval/test_set.json"
+    eval_output_path: str = "eval/results.json"
 
     # ---------------------------------------------------------------------------
     # Validation
