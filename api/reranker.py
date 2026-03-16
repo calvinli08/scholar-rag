@@ -5,35 +5,11 @@ Supports multiple backends: HuggingFace cross-encoder (local), Cohere API.
 
 from __future__ import annotations
 
-from functools import lru_cache
-
 from config import settings, RerankerBackend
 from logger import get_logger
 from models import RetrievedChunk
 
 log = get_logger(__name__)
-
-
-@lru_cache(maxsize=1)
-def _get_reranker():
-    """Get the configured reranking model."""
-    backend = settings.reranker_backend
-    
-    if backend == RerankerBackend.HF:
-        from sentence_transformers import CrossEncoder
-        log.info("Loading HF reranker model: %s", settings.hf_reranker_model)
-        return CrossEncoder(settings.hf_reranker_model)
-    
-    elif backend == RerankerBackend.COHERE:
-        import cohere
-        log.info("Using Cohere reranker backend")
-        return cohere.Client(api_key=settings.cohere_api_key)
-    
-    elif backend == RerankerBackend.NONE:
-        return None
-    
-    else:
-        raise ValueError(f"Unknown reranker backend: {backend}")
 
 
 async def rerank_chunks(
@@ -58,16 +34,22 @@ async def rerank_chunks(
     if settings.reranker_backend == RerankerBackend.NONE:
         return chunks[:top_k or settings.reranker_top_k]
     
-    reranker = _get_reranker()
     backend = settings.reranker_backend
     
     # Prepare pairs for cross-encoder
     pairs = [(query, chunk.text) for chunk in chunks]
     
+    # Initialize reranker and get scores based on backend
     if backend == RerankerBackend.HF:
+        from sentence_transformers import CrossEncoder
+        log.info("Loading HF reranker model: %s", settings.hf_reranker_model)
+        reranker = CrossEncoder(settings.hf_reranker_model)
         scores = reranker.predict(pairs).tolist()
         
     elif backend == RerankerBackend.COHERE:
+        import cohere
+        log.info("Using Cohere reranker backend")
+        reranker = cohere.Client(api_key=settings.cohere_api_key)
         response = reranker.rerank(
             model=settings.cohere_reranker_model,
             query=query,
