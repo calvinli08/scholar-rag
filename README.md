@@ -153,7 +153,7 @@ python eval/run_eval.py --test-set eval/test_set.json
 HuggingFace Sentence Transformers gives you access to a wide range of well-benchmarked embedding models that run entirely offline. For a project ingesting potentially sensitive research, keeping embeddings local removes a meaningful data exposure risk — and it eliminates per-token API costs during the ingestion phase entirely.
 
 **Why two reranker options (local vs hosted)?**  
-A HuggingFace cross-encoder runs on CPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference. Having both shows you understand the tradeoff between operational simplicity and retrieval precision.
+A HuggingFace cross-encoder runs on CPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference.
 
 **Why support local LLMs at all?**  
 Two reasons: zero inference cost during development, no data leaving your machine (important for proprietary research).
