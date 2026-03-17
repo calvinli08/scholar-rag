@@ -1,1 +1,0 @@
-"""ScholarRAG Frontend Package."""
