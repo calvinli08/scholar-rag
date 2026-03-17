@@ -12,28 +12,6 @@ from logger import get_logger
 
 log = get_logger(__name__)
 
-
-@lru_cache(maxsize=1)
-def _get_embedder():
-    """Get the configured embedding model."""
-    backend = settings.embed_backend
-    
-    if backend == EmbedBackend.HF:
-
-    
-    elif backend == EmbedBackend.OLLAMA:
-
-    
-    elif backend == EmbedBackend.OPENAI:
-
-    
-    elif backend == EmbedBackend.COHERE:
-
-    
-    else:
-        raise ValueError(f"Unknown embed backend: {backend}")
-
-
 async def embed_query(query: str) -> list[float]:
     """
     Embed a query string using the configured backend.
@@ -44,7 +22,6 @@ async def embed_query(query: str) -> list[float]:
     Returns:
         List of floats representing the embedding vector
     """
-    embedder = _get_embedder()
     backend = settings.embed_backend
     
     if backend == EmbedBackend.HF:
