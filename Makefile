@@ -54,5 +54,8 @@ test:
 lint:
 	ruff check . --fix
 
-ingest:
-	python -m ingestion.indexer --run-all
+frontend:
+	python -m streamlit run ui/app.py
+
+backend:
+	python -m fastapi dev main.py
