@@ -10,11 +10,12 @@ import uuid
 from pathlib import Path
 
 from api.retriever import retrieve_chunks
-from api.generator import generate_answer
 from api.rag import run_rag_workflow
 from ingestion.pipeline import ingest as ingest_paper
-from logger import get_logger
-from models import QueryResult, RetrievedChunk
+from logger import get_logger, configure_logging
+from data_models.models import QueryResult, RetrievedChunk
+
+configure_logging()
 
 log = get_logger(__name__)
 

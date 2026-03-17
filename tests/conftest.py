@@ -2,7 +2,7 @@
 
 import pytest
 
-from models import Chunk, RetrievedChunk
+from data_models.models import Chunk, RetrievedChunk
 
 
 @pytest.fixture

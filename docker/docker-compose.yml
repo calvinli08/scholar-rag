@@ -1,6 +1,6 @@
 services:
 
-  # ── PostgreSQL + pgvector ──────────────────────────────────────────────────
+  # PostgreSQL + pgvector + parade
   db:
     build:
       context: .
@@ -14,7 +14,6 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      # Named volume — data persists across container restarts and rebuilds
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-scholarrag}", "-d", "${POSTGRES_DB:-scholarrag}"]
@@ -23,7 +22,7 @@ services:
       retries: 10
       start_period: 10s
 
-  # ── pgAdmin (optional, for local DB inspection) ───────────────────────────
+  # ── pgAdmin (optional, for local DB inspection) 
   # Access at http://localhost:5050
   # Login: admin@scholarrag.local / admin
   # Disable in production: COMPOSE_PROFILES= docker-compose up

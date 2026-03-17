@@ -6,28 +6,6 @@ Two indexes are maintained:
   2. BM25 (in-memory, serialised to disk) — sparse keyword index
 
 Both are written in a single pass over the chunks list.
-
-Schema (created automatically on first run):
-  CREATE TABLE chunks (
-      chunk_id      TEXT PRIMARY KEY,
-      paper_id      TEXT NOT NULL,
-      text          TEXT NOT NULL,
-      embedding     vector(<dim>),
-      section       TEXT,
-      page          INT,
-      chunk_index   INT,
-      title         TEXT,
-      authors       JSONB,
-      year          INT,
-      doi           TEXT,
-      arxiv_id      TEXT,
-      created_at    TIMESTAMPTZ DEFAULT now()
-  );
-
-Usage:
-    indexer = Indexer()
-    indexer.index(chunks)        # write to both indexes
-    indexer.delete_paper(paper_id)  # remove all chunks for a paper
 """
 
 from __future__ import annotations
@@ -43,7 +21,7 @@ from rank_bm25 import BM25Okapi
 
 from config import settings
 from logger import get_logger
-from models import Chunk
+from data_models.models import Chunk
 
 log = get_logger(__name__)
 
@@ -286,6 +264,3 @@ class Indexer:
             cur.executemany(sql, rows)
         self._conn.commit()
         log.debug("pgvector: upserted %d rows into %r", len(rows), self._table)
-
-
-

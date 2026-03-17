@@ -5,18 +5,18 @@
 # Build:  docker build -t scholarrag-db .
 # Run:    docker-compose up -d   (preferred — see docker-compose.yml)
 
-FROM pgvector/pgvector:pg16
+FROM paradedb/paradedb:0.22.0-pg18
 
-# ── Locale & timezone ────────────────────────────────────────────────────────
+#  Locale & timezone 
 ENV LANG=en_US.utf8 \
     TZ=UTC
 
-# ── Copy init scripts ────────────────────────────────────────────────────────
+#  Copy init scripts 
 # Postgres runs every *.sql and *.sh file in this directory on first start,
 # in alphabetical order. Prefixing with numbers controls execution order.
 COPY docker/init/ /docker-entrypoint-initdb.d/
 
-# ── Healthcheck ──────────────────────────────────────────────────────────────
+#  Healthcheck 
 # Used by docker-compose depends_on condition: service_healthy
 HEALTHCHECK --interval=5s --timeout=5s --retries=10 \
     CMD pg_isready -U "${POSTGRES_USER:-scholarrag}" -d "${POSTGRES_DB:-scholarrag}"

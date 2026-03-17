@@ -5,12 +5,13 @@ Supports multiple backends: HuggingFace cross-encoder (local), Cohere API.
 
 from __future__ import annotations
 
+from functools import lru_cache
+
 from config import settings, RerankerBackend
 from logger import get_logger
-from models import RetrievedChunk
+from data_models.models import RetrievedChunk
 
 log = get_logger(__name__)
-
 
 async def rerank_chunks(
     query: str,
@@ -39,28 +40,28 @@ async def rerank_chunks(
     # Prepare pairs for cross-encoder
     pairs = [(query, chunk.text) for chunk in chunks]
     
-    # Initialize reranker and get scores based on backend
     if backend == RerankerBackend.HF:
         from sentence_transformers import CrossEncoder
-        log.info("Loading HF reranker model: %s", settings.hf_reranker_model)
+
         reranker = CrossEncoder(settings.hf_reranker_model)
+
         scores = reranker.predict(pairs).tolist()
-        
     elif backend == RerankerBackend.COHERE:
         import cohere
-        log.info("Using Cohere reranker backend")
-        reranker = cohere.Client(api_key=settings.cohere_api_key)
+
+        reranker = cohere.ClientV2(api_key=settings.cohere_api_key)
+
         response = reranker.rerank(
             model=settings.cohere_reranker_model,
             query=query,
             documents=[chunk.text for chunk in chunks],
             top_n=len(chunks),
         )
+
         # Cohere returns results already sorted, extract scores
         scores = [0.0] * len(chunks)
         for result in response.results:
             scores[result.index] = result.relevance_score
-        
     else:
         raise ValueError(f"Unknown reranker backend: {backend}")
     
