@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from db import get_pool
 from logger import get_logger
-from models import Chunk, RetrievedChunk
+from data_models.models import Chunk, RetrievedChunk
 from config import settings
 
 log = get_logger(__name__)

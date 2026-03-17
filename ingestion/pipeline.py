@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Optional
 
 from logger import get_logger
-from models import Chunk
+from data_models.models import Chunk
 
 log = get_logger(__name__)
 

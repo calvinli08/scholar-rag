@@ -1,6 +1,6 @@
 """Smoke tests — verify config loads and models instantiate correctly."""
 
-from models import Chunk, QueryResult, RetrievedChunk
+from data_models.models import Chunk, QueryResult, RetrievedChunk
 
 
 def test_settings_load():

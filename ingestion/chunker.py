@@ -26,7 +26,7 @@ import tiktoken
 from config import settings
 from ingestion.pdf_parser import ParsedDocument, Section
 from logger import get_logger
-from models import Chunk
+from data_models.models import Chunk
 
 log = get_logger(__name__)
 

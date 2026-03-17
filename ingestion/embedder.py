@@ -24,7 +24,7 @@ from typing import Protocol
 
 from config import EmbedBackend, settings
 from logger import get_logger
-from models import Chunk
+from data_models.models import Chunk
 
 log = get_logger(__name__)
 
@@ -219,7 +219,7 @@ class CohereEmbedder(BaseEmbedder):
     def __init__(self) -> None:
         import cohere
 
-        self._client = cohere.Client(api_key=settings.cohere_api_key)
+        self._client = cohere.ClientV2(api_key=settings.cohere_api_key)
         self._model = settings.cohere_embed_model
         self._dim = settings.embed_dim
         log.info("Cohere embedder ready (model=%s)", self._model)
