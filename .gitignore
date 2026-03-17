@@ -52,6 +52,8 @@ Thumbs.db
 # Logs
 *.log
 
+uploads/*
+
 # Compressed
 *.zip
 *.gz
