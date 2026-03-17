@@ -38,7 +38,11 @@ def generate_rag_response(
                 "use_reranker": use_reranker,
                 "top_k": top_k
             }
-            response = client.post(f"{settings.app_host}/rag", json=payload)
+
+            response = client.post(f"{settings.app_host}:{settings.app_port}/query", json=payload)
+            if response.status_code != 200:
+                return {"error": f"Query failed"}
+            
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}

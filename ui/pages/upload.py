@@ -17,7 +17,12 @@ def upload_pdf(file):
     try:
         with httpx.Client(timeout=60.0) as client:
             files = {"file": (file.name, file.getvalue(), "application/pdf")}
-            response = client.post(f"{settings.app_host}/ingest", files=files)
+
+            response = client.post(f"{settings.app_host}:{settings.app_port}/ingest/upload", files=files)
+
+            if response.status_code != 200:
+                return {"error": "Upload failed"}
+
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}
@@ -49,10 +54,10 @@ if uploaded_files:
         progress_bar = st.progress(0)
         status_text = st.empty()
         results_container = st.container()
-        
+
         success_count = 0
         error_count = 0
-        
+
         for i, uploaded_file in enumerate(uploaded_files):
             status_text.text(f"Uploading {uploaded_file.name}... ({i+1}/{len(uploaded_files)})")
             
