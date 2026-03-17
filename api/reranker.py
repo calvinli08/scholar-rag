@@ -9,32 +9,9 @@ from functools import lru_cache
 
 from config import settings, RerankerBackend
 from logger import get_logger
-from models import RetrievedChunk
+from data_models.models import RetrievedChunk
 
 log = get_logger(__name__)
-
-
-@lru_cache(maxsize=1)
-def _get_reranker():
-    """Get the configured reranking model."""
-    backend = settings.reranker_backend
-    
-    if backend == RerankerBackend.HF:
-        from sentence_transformers import CrossEncoder
-        log.info("Loading HF reranker model: %s", settings.hf_reranker_model)
-        return CrossEncoder(settings.hf_reranker_model)
-    
-    elif backend == RerankerBackend.COHERE:
-        import cohere
-        log.info("Using Cohere reranker backend")
-        return cohere.Client(api_key=settings.cohere_api_key)
-    
-    elif backend == RerankerBackend.NONE:
-        return None
-    
-    else:
-        raise ValueError(f"Unknown reranker backend: {backend}")
-
 
 async def rerank_chunks(
     query: str,
@@ -58,27 +35,33 @@ async def rerank_chunks(
     if settings.reranker_backend == RerankerBackend.NONE:
         return chunks[:top_k or settings.reranker_top_k]
     
-    reranker = _get_reranker()
     backend = settings.reranker_backend
     
     # Prepare pairs for cross-encoder
     pairs = [(query, chunk.text) for chunk in chunks]
     
     if backend == RerankerBackend.HF:
+        from sentence_transformers import CrossEncoder
+
+        reranker = CrossEncoder(settings.hf_reranker_model)
+
         scores = reranker.predict(pairs).tolist()
-        
     elif backend == RerankerBackend.COHERE:
+        import cohere
+
+        reranker = cohere.ClientV2(api_key=settings.cohere_api_key)
+
         response = reranker.rerank(
             model=settings.cohere_reranker_model,
             query=query,
             documents=[chunk.text for chunk in chunks],
             top_n=len(chunks),
         )
+
         # Cohere returns results already sorted, extract scores
         scores = [0.0] * len(chunks)
         for result in response.results:
             scores[result.index] = result.relevance_score
-        
     else:
         raise ValueError(f"Unknown reranker backend: {backend}")
     
