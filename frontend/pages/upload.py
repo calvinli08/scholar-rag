@@ -17,7 +17,7 @@ def upload_pdf(file):
     try:
         with httpx.Client(timeout=60.0) as client:
             files = {"file": (file.name, file.getvalue(), "application/pdf")}
-            response = client.post(f"{settings.app_url}/ingest", files=files)
+            response = client.post(f"{settings.app_host}/ingest", files=files)
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}

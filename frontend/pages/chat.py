@@ -17,7 +17,7 @@ def search_query(query: str, top_k: int = 5):
     try:
         with httpx.Client(timeout=30.0) as client:
             payload = {"query": query, "top_k": top_k}
-            response = client.post(f"{settings.app_url}/search", json=payload)
+            response = client.post(f"{settings.app_host}/search", json=payload)
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}
@@ -38,7 +38,7 @@ def generate_rag_response(
                 "use_reranker": use_reranker,
                 "top_k": top_k
             }
-            response = client.post(f"{settings.app_url}/rag", json=payload)
+            response = client.post(f"{settings.app_host}/rag", json=payload)
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}
