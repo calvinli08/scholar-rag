@@ -28,10 +28,10 @@ with col1:
     st.markdown("#### 📄 Upload Papers")
     st.markdown("Upload PDF documents to build your research knowledge base.")
     if st.button("Go to Upload →", key="upload_btn"):
-        st.switch_page("pages/01_Upload.py")
+        st.switch_page("pages/upload.py")
 
 with col2:
     st.markdown("#### 💬 Chat & Reports")
     st.markdown("Ask questions and generate RAG-based research reports.")
     if st.button("Go to Chat →", key="chat_btn"):
-        st.switch_page("pages/02_Chat.py")
+        st.switch_page("pages/chat.py")
