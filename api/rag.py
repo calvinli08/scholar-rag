@@ -3,7 +3,7 @@ from typing import TypedDict, List, Dict, Any, Optional
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
 
-from api.retriever import Retriever
+from api.retriever import retrieve_chunks
 from ingestion.embedder import get_embedder
 from config import settings
 
@@ -35,7 +35,7 @@ def get_llm_instance():
         return ChatOllama(
             model=settings.ollama_model,
             temperature=settings.llm_temperature,
-            base_url=settings.ollama_base_url
+            base_url=settings.ollama_llm_url
         )
     elif backend == "cohere":
         from langchain_cohere import ChatCohere
@@ -63,8 +63,6 @@ def build_rag_graph():
     
     # Initialize components using settings from config
     llm = get_llm_instance()
-    embedder = get_embedder()
-    retriever = Retriever(embedder=embedder)
     
     # --- Nodes ---
     
@@ -81,7 +79,7 @@ def build_rag_graph():
     def retrieve_node(state: RAGState) -> Dict:
         """Retrieve relevant chunks using the HyDE query."""
         query_text = state.get("hyde_query") or state["query"]
-        chunks = retriever.search(query_text, top_k=5, mode="hybrid")
+        chunks = retrieve_chunks(query_text, top_k=5, mode="hybrid")
         return {"chunks": chunks}
 
     def generate_node(state: RAGState) -> Dict:
