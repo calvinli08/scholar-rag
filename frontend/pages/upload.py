@@ -4,6 +4,7 @@ import streamlit as st
 import httpx
 import asyncio
 from pathlib import Path
+from config import settings
 
 st.set_page_config(
     page_title="Upload Papers - ScholarRAG",
@@ -11,15 +12,12 @@ st.set_page_config(
     layout="wide",
 )
 
-API_BASE_URL = "http://localhost:8000"
-
-
-def upload_pdf(file, api_url: str = API_BASE_URL):
+def upload_pdf(file):
     """Upload a PDF file to the ingestion API."""
     try:
         with httpx.Client(timeout=60.0) as client:
             files = {"file": (file.name, file.getvalue(), "application/pdf")}
-            response = client.post(f"{api_url}/ingest", files=files)
+            response = client.post(f"{settings.app_url}/ingest", files=files)
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}

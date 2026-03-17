@@ -3,6 +3,7 @@
 import streamlit as st
 import httpx
 from datetime import datetime
+from config import settings
 
 st.set_page_config(
     page_title="Chat - ScholarRAG",
@@ -10,15 +11,13 @@ st.set_page_config(
     layout="wide",
 )
 
-API_BASE_URL = "http://localhost:8000"
 
-
-def search_query(query: str, top_k: int = 5, api_url: str = API_BASE_URL):
+def search_query(query: str, top_k: int = 5):
     """Search for relevant chunks using the query."""
     try:
         with httpx.Client(timeout=30.0) as client:
             payload = {"query": query, "top_k": top_k}
-            response = client.post(f"{api_url}/search", json=payload)
+            response = client.post(f"{settings.app_url}/search", json=payload)
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}
@@ -29,8 +28,7 @@ def search_query(query: str, top_k: int = 5, api_url: str = API_BASE_URL):
 def generate_rag_response(
     query: str, 
     use_reranker: bool = True,
-    top_k: int = 5,
-    api_url: str = API_BASE_URL
+    top_k: int = 5
 ):
     """Generate a RAG response with citations."""
     try:
@@ -40,7 +38,7 @@ def generate_rag_response(
                 "use_reranker": use_reranker,
                 "top_k": top_k
             }
-            response = client.post(f"{api_url}/rag", json=payload)
+            response = client.post(f"{settings.app_url}/rag", json=payload)
             return response.json()
     except httpx.ConnectError:
         return {"error": "Could not connect to API. Is it running?"}
