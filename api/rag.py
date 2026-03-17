@@ -37,6 +37,13 @@ def get_llm_instance():
             temperature=settings.llm_temperature,
             base_url=settings.ollama_base_url
         )
+    elif backend == "cohere":
+        from langchain_cohere import ChatCohere
+        return ChatCohere(
+            model=settings.cohere_model,
+            temperature=settings.llm_temperature,
+            api_key=settings.cohere_api_key
+        )
     else:
         raise ValueError(f"Unsupported LLM backend: {backend}")
 
@@ -92,6 +99,7 @@ def build_rag_graph():
         
         chain = prompt | llm
         response = chain.invoke({"context": context, "query": state["query"]})
+        
         return {"generated_answer": response.content, "retry_count": state["retry_count"] + 1}
 
     def evaluate_node(state: RAGState) -> Dict:
@@ -101,13 +109,8 @@ def build_rag_graph():
             
         context = "\n".join([c["content"] for c in state["chunks"]])
         
-        # Import DeepEval here to avoid issues if not installed
-        try:
-            from deepeval.metrics import FaithfulnessMetric
-            from deepeval.test_case import LLMTestCase
-        except ImportError:
-            print("DeepEval not installed, skipping grounding evaluation")
-            return {"grounding_score": 1.0}
+        from deepeval.metrics import FaithfulnessMetric
+        from deepeval.test_case import LLMTestCase
         
         test_case = LLMTestCase(
             input=state["query"],
@@ -116,6 +119,7 @@ def build_rag_graph():
         )
         
         metric = FaithfulnessMetric(threshold=GROUNDING_THRESHOLD)
+        
         try:
             metric.measure(test_case)
             score = metric.score
