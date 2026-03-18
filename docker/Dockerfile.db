@@ -14,7 +14,7 @@ ENV LANG=en_US.utf8 \
 #  Copy init scripts 
 # Postgres runs every *.sql and *.sh file in this directory on first start,
 # in alphabetical order. Prefixing with numbers controls execution order.
-COPY docker/init/ /docker-entrypoint-initdb.d/
+COPY init/ /docker-entrypoint-initdb.d/
 
 #  Healthcheck 
 # Used by docker-compose depends_on condition: service_healthy

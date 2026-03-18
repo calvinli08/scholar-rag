@@ -3,7 +3,6 @@
 -- The embedding dimension here must match EMBED_DIM in your .env (default 1024).
 -- If you change the model and dimension, drop and recreate this table.
 
--- ── Chunks table ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS chunks (
     chunk_id    TEXT        PRIMARY KEY,
     paper_id    TEXT        NOT NULL,
