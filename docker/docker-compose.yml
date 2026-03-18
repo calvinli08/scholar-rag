@@ -14,7 +14,7 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-scholarrag}", "-d", "${POSTGRES_DB:-scholarrag}"]
       interval: 5s
@@ -22,31 +22,6 @@ services:
       retries: 10
       start_period: 10s
 
-  # ── pgAdmin (optional, for local DB inspection) 
-  # Access at http://localhost:5050
-  # Login: admin@scholarrag.local / admin
-  # Disable in production: COMPOSE_PROFILES= docker-compose up
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: scholarrag-pgadmin
-    restart: unless-stopped
-    profiles: [tools]      # Only starts with: docker-compose --profile tools up
-    environment:
-      PGADMIN_DEFAULT_EMAIL:    admin@scholarrag.local
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: "False"    # Single-user desktop mode
-      PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED: "False"
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./docker/pgadmin_servers.json:/pgadmin4/servers.json:ro
-    depends_on:
-      db:
-        condition: service_healthy
-
 volumes:
   pgdata:
-    driver: local
-  pgadmin_data:
     driver: local
