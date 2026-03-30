@@ -42,7 +42,7 @@ def get_llm_instance():
         return ChatCohere(
             model=settings.cohere_model,
             temperature=settings.llm_temperature,
-            api_key=settings.cohere_api_key
+            cohere_api_key=settings.cohere_api_key
         )
     else:
         raise ValueError(f"Unsupported LLM backend: {backend}")
