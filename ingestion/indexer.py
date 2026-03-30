@@ -161,7 +161,6 @@ class Indexer:
         self._table = settings.pgvector_table
         self._dim = settings.embed_dim
         self._bm25 = BM25Index()
-        self._ensure_schema()
         self._bm25.load()  # load from disk if available
 
     def __enter__(self) -> "Indexer":
@@ -235,11 +234,6 @@ class Indexer:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
-
-    def _ensure_schema(self) -> None:
-        # Schema is already initialized by Docker on first start via
-        # docker/init/*.sql scripts. No action needed here.
-        pass
 
     def _write_pgvector(self, chunks: list[Chunk]) -> None:
         sql = _UPSERT.format(table=self._table)
