@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw_idx
 -- This provides true BM25 scoring for sparse retrieval
 CREATE INDEX IF NOT EXISTS chunks_text_bm25_idx
     ON chunks
-    USING bm25 (text)
+    USING bm25 (chunk_id, text)
     WITH (key_field = 'chunk_id');
 
 -- Trigram similarity fallback (useful for fuzzy text search, optional)
