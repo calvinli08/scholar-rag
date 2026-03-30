@@ -18,6 +18,8 @@ venv/
 coverage/
 htmlcov/
 
+.bm25_index.pkl
+
 # Build artifacts
 build/
 dist/
