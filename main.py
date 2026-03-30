@@ -14,6 +14,7 @@ from api.rag import run_rag_workflow
 from ingestion.pipeline import ingest as ingest_paper
 from logger import get_logger, configure_logging
 from data_models.models import QueryResult, RetrievedChunk
+from db import get_pool
 
 configure_logging()
 
@@ -166,6 +167,84 @@ async def process_ingestion(job_id: str, file_path: Path):
         log.error("Ingestion failed for job %s: %s", job_id, e)
         ingestion_jobs[job_id]["status"] = "failed"
         ingestion_jobs[job_id]["error"] = str(e)
+
+
+@app.get("/api/papers")
+async def list_papers():
+    """
+    List all uploaded papers with their metadata and status.
+    Returns array of paper objects.
+    """
+    try:
+        pool = get_pool()
+        with pool.connection() as conn:
+            with conn.cursor() as cur:
+                # Query the papers table with chunk counts
+                query = """
+                SELECT 
+                    p.paper_id,
+                    p.title AS filename,
+                    p.ingested_at AS uploaded_at,
+                    p.chunk_count,
+                    COALESCE(SUM(LENGTH(c.text) / 4), 0) AS token_count,
+                    jsonb_build_object(
+                        'title', p.title,
+                        'authors', p.authors,
+                        'year', p.year,
+                        'doi', p.doi,
+                        'arxiv_id', p.arxiv_id
+                    ) AS metadata
+                FROM papers p
+                LEFT JOIN chunks c ON p.paper_id = c.paper_id
+                GROUP BY p.paper_id, p.title, p.ingested_at, p.chunk_count, p.authors, p.year, p.doi, p.arxiv_id
+                ORDER BY p.ingested_at DESC
+                """
+                
+                cur.execute(query)
+                rows = cur.fetchall()
+                
+                papers = []
+                for row in rows:
+                    papers.append({
+                        "paper_id": row[0],
+                        "filename": row[1] or "Unknown",
+                        "status": "completed",  # All papers in DB are completed
+                        "uploaded_at": row[2].isoformat() if row[2] else "N/A",
+                        "chunk_count": row[3] or 0,
+                        "token_count": row[4] or 0,
+                        "metadata": row[5] or {}
+                    })
+        
+        return {"papers": papers}
+    except Exception as e:
+        log.error("Failed to list papers: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ingestion/status")
+async def get_all_ingestion_status():
+    """
+    Get the status of all pending ingestion jobs.
+    Returns array of job objects.
+    """
+    try:
+        jobs = []
+        for job_id, job in ingestion_jobs.items():
+            if job["status"] in ["pending", "processing"]:
+                jobs.append({
+                    "job_id": job_id,
+                    "filename": job["filename"],
+                    "status": job["status"],
+                    "progress": job.get("progress", 0),
+                    "started_at": job.get("started_at", "N/A"),
+                    "chunks_processed": job.get("chunks_processed", 0),
+                    "total_chunks": job.get("total_chunks", 0)
+                })
+        
+        return {"jobs": jobs}
+    except Exception as e:
+        log.error("Failed to get ingestion status: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/ingest/status/{job_id}")
