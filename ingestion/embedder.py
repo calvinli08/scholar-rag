@@ -229,8 +229,14 @@ class CohereEmbedder(BaseEmbedder):
             texts=texts,
             model=self._model,
             input_type="search_document",
+            embedding_types=["float"]
         )
-        return [list(v) for v in response.embeddings]
+
+        for v in response.embeddings:
+            if "float" in v[0]:
+                return v[1]
+
+        raise Exception("Failed to create float embeddings")
 
     @property
     def dimension(self) -> int:
