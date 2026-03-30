@@ -70,9 +70,9 @@ if uploaded_files:
             else:
                 success_count += 1
                 with results_container:
-                    st.success(
-                        f"✅ **{uploaded_file.name}** uploaded successfully! "
-                        f"Chunks: {result.get('chunks', 'N/A')}"
+                    st.info(
+                        f"📥 **{uploaded_file.name}** ingestion job pending. "
+                        f"View processing status in 'papers' tab"
                     )
             
             progress_bar.progress((i + 1) / len(uploaded_files))
