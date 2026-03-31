@@ -12,24 +12,22 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class EmbedBackend(str, Enum):
-    HF = "hf"          # HuggingFace Sentence Transformers (local, default)
-    OLLAMA = "ollama"  # Ollama embedding endpoint (local)
-    OPENAI = "openai"  # OpenAI Embeddings API (hosted)
-    COHERE = "cohere"  # Cohere Embed API (hosted)
+    VLLM = "vllm"        # vLLM pooling models (local, default)
+    OLLAMA = "ollama"    # Ollama embedding endpoint (local)
+    OPENAI = "openai"    # OpenAI Embeddings API (hosted)
+    COHERE = "cohere"    # Cohere Embed API (hosted)
 
 
 class RerankerBackend(str, Enum):
-    HF = "hf"          # HuggingFace cross-encoder (local, default)
-    COHERE = "cohere"  # Cohere Rerank API (hosted)
-    NONE = "none"      # Skip reranking (useful for ablation)
+    VLLM = "vllm"        # vLLM pooling models (local, default)
+    COHERE = "cohere"    # Cohere Rerank API (hosted)
+    NONE = "none"        # Skip reranking (useful for ablation)
 
 
 class LLMBackend(str, Enum):
     OLLAMA = "ollama"      # Ollama (local, recommended)
-    HF = "hf"              # HuggingFace transformers (local)
     VLLM = "vllm"          # vLLM server (local, high-throughput)
     OPENAI = "openai"      # OpenAI API (hosted fallback)
-    ANTHROPIC = "anthropic"  # Anthropic API (hosted fallback)
     COHERE = "cohere"          # Cohere Generate API (hosted fallback)
 
 
@@ -46,8 +44,8 @@ class Settings(BaseSettings):
     )
 
     # -- Embedding --
-    embed_backend: EmbedBackend = EmbedBackend.HF
-    hf_embed_model: str = "BAAI/bge-large-en-v1.5"
+    embed_backend: EmbedBackend = EmbedBackend.VLLM
+    vllm_embed_model: str = "intfloat/e5-mistral-7b-instruct"
     ollama_embed_model: str = "nomic-embed-text"
     ollama_embed_url: str = "http://localhost:11434"
     openai_embed_model: str = "text-embedding-3-large"
@@ -59,8 +57,8 @@ class Settings(BaseSettings):
     )
 
     # -- Reranker --
-    reranker_backend: RerankerBackend = RerankerBackend.HF
-    hf_reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_backend: RerankerBackend = RerankerBackend.VLLM
+    vllm_reranker_model: str = "BAAI/bge-reranker-v2-minimum"
     cohere_reranker_model: str = "rerank-v4.0-fast"
     reranker_top_k: int = Field(default=8, description="Chunks kept after reranking.")
     reranker_initial_k: int = Field(
@@ -71,18 +69,15 @@ class Settings(BaseSettings):
     llm_backend: LLMBackend = LLMBackend.OLLAMA
     ollama_model: str = "llama3"
     ollama_llm_url: str = "http://localhost:11434"
-    hf_llm_model: str = "mistralai/Mistral-7B-Instruct-v0.3"
     vllm_url: str = "http://localhost:8000"
     vllm_model: str = "mistralai/Mistral-7B-Instruct-v0.3"
     openai_model: str = "gpt-4o-mini"
-    anthropic_model: str = "claude-3-5-haiku-20241022"
     cohere_model: str = "command-a-03-2025"
     llm_max_tokens: int = 1024
     llm_temperature: float = 0.1
 
     # -- API keys (only required for hosted backends) --
     openai_api_key: str = ""
-    anthropic_api_key: str = ""
     cohere_api_key: str = ""
 
     # -- Vector store --
@@ -126,7 +121,7 @@ class Settings(BaseSettings):
     def check_api_keys(self) -> "Settings":
         hosted_embed = self.embed_backend in (EmbedBackend.OPENAI, EmbedBackend.COHERE)
         hosted_rerank = self.reranker_backend == RerankerBackend.COHERE
-        hosted_llm = self.llm_backend in (LLMBackend.OPENAI, LLMBackend.ANTHROPIC, LLMBackend.COHERE)
+        hosted_llm = self.llm_backend in (LLMBackend.OPENAI, LLMBackend.COHERE)
 
         if hosted_embed and self.embed_backend == EmbedBackend.OPENAI and not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required when EMBED_BACKEND=openai")
@@ -136,8 +131,6 @@ class Settings(BaseSettings):
             raise ValueError("COHERE_API_KEY is required when RERANKER_BACKEND=cohere")
         if hosted_llm and self.llm_backend == LLMBackend.OPENAI and not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required when LLM_BACKEND=openai")
-        if hosted_llm and self.llm_backend == LLMBackend.ANTHROPIC and not self.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required when LLM_BACKEND=anthropic")
         if hosted_llm and self.llm_backend == LLMBackend.COHERE and not self.cohere_api_key:
             raise ValueError("COHERE_API_KEY is required when LLM_BACKEND=cohere")
 

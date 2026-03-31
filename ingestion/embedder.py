@@ -2,7 +2,7 @@
 Embedding client for ScholarRAG.
 
 Supports four backends controlled by EMBED_BACKEND:
-  hf      — HuggingFace Sentence Transformers (local, default)
+  vllm    — vLLM pooling models (local, default)
   ollama  — Ollama embedding endpoint (local, OpenAI-compatible)
   openai  — OpenAI Embeddings API (hosted)
   cohere  — Cohere Embed API (hosted)
@@ -99,33 +99,41 @@ class BaseEmbedder(ABC):
 
 
 # ---------------------------------------------------------------------------
-# HuggingFace (local)
+# vLLM (local)
 # ---------------------------------------------------------------------------
 
-class HFEmbedder(BaseEmbedder):
+class VLLMEmbedder(BaseEmbedder):
     """
-    Local embedding via HuggingFace Sentence Transformers.
-    Any model on the HuggingFace hub that is compatible with
-    SentenceTransformer() will work — set HF_EMBED_MODEL in .env.
+    Local embedding via vLLM pooling models.
+    Requires vLLM server running locally with a pooling model loaded.
+    Uses OpenAI-compatible API: /v1/embeddings
+    See: https://docs.vllm.ai/en/stable/models/pooling_models/
     """
 
     def __init__(self) -> None:
-        # Defer heavy import so other backends don't pay the torch load cost
-        from sentence_transformers import SentenceTransformer
+        import httpx
 
-        log.info("Loading HF embedding model: %s", settings.hf_embed_model)
-        self._model = SentenceTransformer(settings.hf_embed_model)
-        self._dim: int = self._model.get_sentence_embedding_dimension()
-        log.info("HF embedder ready (dim=%d)", self._dim)
+        self._client = httpx.Client(base_url=settings.vllm_url, timeout=120)
+        self._model = settings.vllm_embed_model
+        self._dim = settings.embed_dim
+        log.info(
+            "vLLM embedder ready (model=%s, url=%s)",
+            self._model, settings.vllm_url,
+        )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        vectors = self._model.encode(
-            texts,
-            batch_size=settings.embed_batch_size,
-            show_progress_bar=False,
-            normalize_embeddings=True,
+        # vLLM OpenAI-compatible embeddings API
+        resp = self._client.post(
+            "/v1/embeddings",
+            json={
+                "model": self._model,
+                "input": texts,
+            },
         )
-        return vectors.tolist()
+        resp.raise_for_status()
+        data = resp.json()
+        # vLLM returns {"data": [{"embedding": [...], "index": 0}, ...]}
+        return [item["embedding"] for item in data["data"]]
 
     @property
     def dimension(self) -> int:
@@ -255,8 +263,8 @@ def get_embedder() -> BaseEmbedder:
     backend = settings.embed_backend
     log.info("Initialising embedder: backend=%s", backend)
 
-    if backend == EmbedBackend.HF:
-        return HFEmbedder()
+    if backend == EmbedBackend.VLLM:
+        return VLLMEmbedder()
     if backend == EmbedBackend.OLLAMA:
         return OllamaEmbedder()
     if backend == EmbedBackend.OPENAI:

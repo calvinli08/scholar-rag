@@ -1,11 +1,9 @@
 """
 Query embedding module for retrieval.
-Supports multiple backends: HuggingFace (local), Ollama, OpenAI, Cohere.
+Supports multiple backends: vLLM (local), Ollama, OpenAI, Cohere.
 """
 
 from __future__ import annotations
-
-from functools import lru_cache
 
 from config import settings, EmbedBackend
 from logger import get_logger
@@ -15,26 +13,31 @@ log = get_logger(__name__)
 async def embed_query(query: str) -> list[float]:
     """
     Embed a query string using the configured backend.
-    
+
     Args:
         query: Query text to embed
-        
+
     Returns:
         List of floats representing the embedding vector
     """
     backend = settings.embed_backend
-    
-    if backend == EmbedBackend.HF:
-        from sentence_transformers import SentenceTransformer
 
-        embedder = SentenceTransformer(settings.hf_embed_model)
+    if backend == EmbedBackend.VLLM:
+        import httpx
 
-        embedding = embedder.encode(
-            query,
-            convert_to_numpy=True,
-            normalize_embeddings=True,
-        ).tolist()
-        
+        # vLLM OpenAI-compatible embeddings API
+        response = await httpx.AsyncClient().post(
+            f"{settings.vllm_url}/v1/embeddings",
+            json={
+                "model": settings.vllm_embed_model,
+                "input": query,
+            },
+        )
+
+        response.raise_for_status()
+        data = response.json()
+        embedding = data["data"][0]["embedding"]
+
     elif backend == EmbedBackend.OLLAMA:
         import httpx
 
@@ -47,9 +50,8 @@ async def embed_query(query: str) -> list[float]:
         )
 
         response.raise_for_status()
-
         embedding = response.json()["embedding"]
-        
+
     elif backend == EmbedBackend.OPENAI:
         from openai import OpenAI
 
@@ -61,7 +63,7 @@ async def embed_query(query: str) -> list[float]:
         )
 
         embedding = response.data[0].embedding
-        
+
     elif backend == EmbedBackend.COHERE:
         import cohere
 
@@ -70,11 +72,12 @@ async def embed_query(query: str) -> list[float]:
         response = embedder.embed(
             texts=[query],
             model=settings.cohere_embed_model,
+            input_type="search_query",
         )
 
         embedding = response.embeddings[0]
-        
+
     else:
         raise ValueError(f"Unknown embed backend: {backend}")
-    
+
     return embedding
