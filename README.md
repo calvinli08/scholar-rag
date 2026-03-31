@@ -51,7 +51,7 @@ Dense vector search alone misses exact terminology — critical in scientific li
 - **Reciprocal Rank Fusion (RRF)** to merge ranked lists without score normalization headaches
 
 **Embedding backends** — switch via `EMBED_BACKEND`:
-- **Local:** any HuggingFace Sentence Transformers embedding model — runs on CPU or GPU, no API key needed
+- **Local:** vLLM pooling models — runs on GPU, OpenAI-compatible API, no API key needed
 - **Hosted:** `text-embedding-3-large` (OpenAI) or `embed-english-v3.0` (Cohere) for maximum retrieval quality
 
 ### 📄 Semantic Chunking for Research Papers
@@ -67,17 +67,16 @@ Short natural language queries fail against dense academic text. [HyDE (Hypothet
 After initial retrieval (top-50), a reranker rescores chunk-query pairs for precision. Top-8 chunks form the context window.
 
 **Reranker backends** — switch via `RERANKER_BACKEND`:
-- **Local:** any HuggingFace cross-encoder model — runs entirely on CPU, no API key needed
+- **Local:** vLLM pooling models with reranking — runs on GPU, OpenAI-compatible API, no API key needed
 - **Hosted:** Cohere Rerank API — best out-of-the-box quality, easy to swap in for production
 
 ### 🖥️ Local LLM Support
 ScholarRAG runs fully offline. The LLM backend is provider-agnostic:
 - **Ollama** — run `llama3`, `mistral`, `phi3`, or any GGUF model locally via a drop-in OpenAI-compatible endpoint
-- **HuggingFace Transformers** — load any `AutoModelForCausalLM` model directly (Mistral-7B, Qwen2, Gemma-2 etc.)
 - **vLLM** — production-grade local inference with PagedAttention for higher throughput
-- **Hosted fallback** — OpenAI / Anthropic APIs still supported via the same interface
+- **Hosted fallback** — OpenAI / Cohere APIs still supported via the same interface
 
-Switch backends with a single env variable: `LLM_BACKEND=ollama|hf|vllm|openai|anthropic`
+Switch backends with a single env variable: `LLM_BACKEND=ollama|vllm|openai|cohere`
 
 ### 📊 Evaluation Built In
 RAG without eval is guesswork. ScholarRAG ships with:
@@ -102,25 +101,24 @@ pip install -r requirements.txt
 cp .env.example .env
 # Choose your backends (all default to local if unset):
 #
-#   EMBED_BACKEND=hf            (local HuggingFace, default)
+#   EMBED_BACKEND=vllm          (local vLLM, default)
 #   EMBED_BACKEND=ollama        (local via Ollama)
 #   EMBED_BACKEND=openai        (hosted)
 #   EMBED_BACKEND=cohere        (hosted)
 #
-#   RERANKER_BACKEND=hf         (local cross-encoder, default)
+#   RERANKER_BACKEND=vllm       (local vLLM, default)
 #   RERANKER_BACKEND=cohere     (hosted, higher quality)
 #
 #   LLM_BACKEND=ollama          (local, recommended)
-#   LLM_BACKEND=hf              (local HuggingFace)
 #   LLM_BACKEND=vllm            (local, high-throughput)
 #   LLM_BACKEND=openai          (hosted fallback)
-#   LLM_BACKEND=anthropic       (hosted fallback)
+#   LLM_BACKEND=cohere          (hosted fallback)
 
-# Fully local — zero API keys required
-export EMBED_BACKEND=hf
-export HF_EMBED_MODEL=<your-chosen-hf-embedding-model>
-export RERANKER_BACKEND=hf
-export RERANKER_MODEL=<your-chosen-hf-cross-encoder>
+# Fully local — zero API keys required (vLLM for embeddings/reranking, Ollama for LLM)
+export EMBED_BACKEND=vllm
+export VLLM_EMBED_MODEL=intfloat/e5-mistral-7b-instruct
+export RERANKER_BACKEND=vllm
+export VLLM_RERANKER_MODEL=BAAI/bge-reranker-v2-minimum
 export LLM_BACKEND=ollama
 export OLLAMA_MODEL=llama3
 ollama pull llama3
@@ -149,11 +147,11 @@ python eval/run_eval.py --test-set eval/test_set.json
 
 ## Design Decisions & Tradeoffs
 
-**Why support local embeddings?**  
-HuggingFace Sentence Transformers gives you access to a wide range of well-benchmarked embedding models that run entirely offline. For a project ingesting potentially sensitive research, keeping embeddings local removes a meaningful data exposure risk — and it eliminates per-token API costs during the ingestion phase entirely.
+**Why support local embeddings?**
+vLLM pooling models give you access to high-quality embedding models that run entirely offline with high throughput. For a project ingesting potentially sensitive research, keeping embeddings local removes a meaningful data exposure risk — and it eliminates per-token API costs during the ingestion phase entirely.
 
-**Why two reranker options (local vs hosted)?**  
-A HuggingFace cross-encoder runs on CPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference.
+**Why two reranker options (local vs hosted)?**
+vLLM reranking runs on GPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference.
 
 **Why support local LLMs at all?**  
 Two reasons: zero inference cost during development, no data leaving your machine (important for proprietary research).

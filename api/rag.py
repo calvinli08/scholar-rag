@@ -15,7 +15,7 @@ MAX_RETRIES = 2
 def get_llm_instance():
     """Initialize the LLM based on settings.llm_backend."""
     backend = settings.llm_backend.lower()
-    
+
     if backend == "openai":
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
@@ -23,19 +23,20 @@ def get_llm_instance():
             temperature=settings.llm_temperature,
             api_key=settings.openai_api_key
         )
-    elif backend == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=settings.anthropic_model,
-            temperature=settings.llm_temperature,
-            api_key=settings.anthropic_api_key
-        )
     elif backend == "ollama":
         from langchain_ollama import ChatOllama
         return ChatOllama(
             model=settings.ollama_model,
             temperature=settings.llm_temperature,
             base_url=settings.ollama_llm_url
+        )
+    elif backend == "vllm":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=settings.vllm_model,
+            temperature=settings.llm_temperature,
+            base_url=settings.vllm_url,
+            api_key="ollama"  # vLLM uses OpenAI-compatible API
         )
     elif backend == "cohere":
         from langchain_cohere import ChatCohere
