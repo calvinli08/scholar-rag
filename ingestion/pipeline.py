@@ -77,20 +77,24 @@ def ingest(file_path: str | Path, paper_id: Optional[str] = None) -> str:
         embedder = get_embedder()
         embedder.embed_chunks(chunks)
         log.debug("Embedded %d chunks for %s", len(chunks), paper_id)
-        
-        # Step 4: Index chunks
+
+        # Step 4: Index chunks and save paper record in a single transaction
         log.debug("Indexing chunks...")
         with Indexer() as indexer:
             # Check if paper already exists
             if indexer.paper_exists(paper_id):
                 log.warning("Paper %s already exists in index. Deleting and re-indexing.", paper_id)
                 indexer.delete_paper(paper_id)
-            
+
             indexer.index(chunks)
-            log.info("Successfully indexed %d chunks for %s", len(chunks), paper_id)
-        
+            log.debug("Successfully indexed %d chunks for %s", len(chunks), paper_id)
+
+            # Save paper record to the papers table
+            indexer.save_paper_record(doc, str(file_path), len(chunks))
+            log.info("Successfully indexed %d chunks and saved paper record for %s", len(chunks), paper_id)
+
         log.info("Ingestion complete for %s (id=%s)", file_path.name, paper_id)
-        
+
         return paper_id
     except Exception as e:
         log.error("Ingestion failed for %s (id=%s): %s", file_path.name, paper_id, traceback.format_exc())
