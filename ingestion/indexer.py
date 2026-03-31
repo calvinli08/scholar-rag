@@ -166,7 +166,14 @@ class Indexer:
     def __enter__(self) -> "Indexer":
         return self
 
-    def __exit__(self, *_) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Commit on success, rollback on error."""
+        if exc_type is not None:
+            self._conn.rollback()
+            log.warning("Transaction rolled back due to error: %s", exc_val)
+        else:
+            self._conn.commit()
+            log.debug("Transaction committed.")
         self.close()
 
     def close(self) -> None:
@@ -206,7 +213,6 @@ class Indexer:
                 f"DELETE FROM {self._table} WHERE paper_id = %s", (paper_id,)
             )
             deleted = cur.rowcount
-        self._conn.commit()
         self._bm25.remove_paper(paper_id)
         self._bm25.save()
         log.info("Deleted %d chunks for paper %r.", deleted, paper_id)
@@ -220,6 +226,39 @@ class Indexer:
                 (paper_id,),
             )
             return cur.fetchone() is not None
+
+    def save_paper_record(self, doc, file_path: str, chunk_count: int) -> None:
+        """
+        Insert or update the paper record in the papers table.
+        This is part of the same transaction as chunk indexing.
+        """
+        from ingestion.pdf_parser import ParsedDocument  # Avoid circular import
+
+        sql = """
+            INSERT INTO papers (paper_id, title, authors, year, doi, arxiv_id, file_path, chunk_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (paper_id) DO UPDATE SET
+                title       = EXCLUDED.title,
+                authors     = EXCLUDED.authors,
+                year        = EXCLUDED.year,
+                doi         = EXCLUDED.doi,
+                arxiv_id    = EXCLUDED.arxiv_id,
+                file_path   = EXCLUDED.file_path,
+                chunk_count = EXCLUDED.chunk_count,
+                ingested_at = now();
+        """
+        with self._conn.cursor() as cur:
+            cur.execute(sql, (
+                doc.paper_id,
+                doc.title,
+                json.dumps(doc.authors),
+                doc.year,
+                doc.doi,
+                doc.arxiv_id,
+                file_path,
+                chunk_count,
+            ))
+        log.debug("Paper record saved for %s", doc.paper_id)
 
     def chunk_count(self) -> int:
         """Total number of chunks in pgvector."""
@@ -256,5 +295,4 @@ class Indexer:
         ]
         with self._conn.cursor() as cur:
             cur.executemany(sql, rows)
-        self._conn.commit()
         log.debug("pgvector: upserted %d rows into %r", len(rows), self._table)
