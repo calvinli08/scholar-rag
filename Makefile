@@ -41,7 +41,7 @@ db-logs:
 	docker compose logs -f db
 
 dev-up:
-	docker compose -f docker/docker-compose.yml up -d
+	docker compose -f docker-compose.dev.yml up -d
 
 test:
 	pytest tests/ -v
