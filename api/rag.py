@@ -53,13 +53,16 @@ def get_llm_instance():
 
 
 def get_eval_llm_instance():
-    """Initialize the LLM for evaluation based on settings.model_backend using DeepEval native models."""
+    """Initialize the LLM for evaluation based on settings.model_backend using DeepEval native models.
+    
+    Uses the same configured LLM as the main RAG pipeline (no separate eval model settings).
+    """
     backend = settings.model_backend
 
     if backend == ModelBackend.OPENAI:
         from deepeval.models import GPTModel
         return GPTModel(
-            model=settings.openai_eval_model,
+            model=settings.openai_model,
             api_key=settings.openai_api_key
         )
     elif backend == ModelBackend.VLLM:
@@ -94,13 +97,13 @@ def get_eval_llm_instance():
                 return self._model
 
         return VLLMWrapper(
-            model=settings.vllm_eval_model,
-            base_url=settings.vllm_eval_url
+            model=settings.vllm_model,
+            base_url=settings.vllm_url
         )
     elif backend == ModelBackend.GEMINI:
         from deepeval.models import GeminiModel
         return GeminiModel(
-            model=settings.gemini_eval_model,
+            model=settings.gemini_model,
             api_key=settings.gemini_api_key
         )
     else:
