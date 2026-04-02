@@ -292,8 +292,12 @@ async def query(request: QueryRequest):
     """
     try:
         # Run the agentic RAG workflow
-        result = run_rag_workflow(request.query)
-        
+        result = await run_rag_workflow(
+            query=request.query,
+            top_k=request.top_k,
+            use_reranker=request.use_reranker
+        )
+
         return {
             "query": request.query,
             "answer": result["answer"],
@@ -304,5 +308,8 @@ async def query(request: QueryRequest):
             }
         }
     except Exception as e:
-        log.error("Query failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+
+        log.error("Query failed: %s\n%s", e, traceback.format_exc())
+
+        raise HTTPException(status_code=500, detail="Error generating response")
