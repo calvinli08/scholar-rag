@@ -2,9 +2,13 @@
 Embedding client for ScholarRAG.
 
 Supports three backends controlled by MODEL_BACKEND:
-  vllm    — vLLM pooling models (local, default)
+  qwen    — Qwen models hosted on vLLM server (local, default)
   openai  — OpenAI Embeddings API (hosted)
   gemini  — Google Gemini Embedding API (hosted)
+
+Note: The Qwen backend requires Qwen models to be hosted on vLLM server.
+The vLLM inference engine provides the OpenAI-compatible API layer,
+but only Qwen family models are supported for ScholarRAG.
 
 All backends share the same interface: embed(texts) → list[list[float]].
 Batch size, retry logic, and progress logging are handled uniformly
@@ -98,13 +102,13 @@ class BaseEmbedder(ABC):
 
 
 # ---------------------------------------------------------------------------
-# vLLM (local)
+# Qwen on vLLM (local)
 # ---------------------------------------------------------------------------
 
-class VLLMEmbedder(BaseEmbedder):
+class QWENEmbedder(BaseEmbedder):
     """
-    Local embedding via vLLM pooling models.
-    Requires vLLM server running locally with a pooling model loaded.
+    Local embedding via Qwen models hosted on vLLM server.
+    Requires vLLM server running locally with a Qwen pooling model loaded.
     Uses OpenAI-compatible API: /v1/embeddings
     See: https://docs.vllm.ai/en/stable/models/pooling_models/
     """
@@ -112,16 +116,16 @@ class VLLMEmbedder(BaseEmbedder):
     def __init__(self) -> None:
         import httpx
 
-        self._client = httpx.Client(base_url=settings.vllm_url, timeout=120)
-        self._model = settings.vllm_embed_model
+        self._client = httpx.Client(base_url=settings.qwen_url, timeout=120)
+        self._model = settings.qwen_embed_model
         self._dim = settings.embed_dim
         log.info(
-            "vLLM embedder ready (model=%s, url=%s)",
-            self._model, settings.vllm_url,
+            "Qwen embedder ready (model=%s, url=%s)",
+            self._model, settings.qwen_url,
         )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        # vLLM OpenAI-compatible embeddings API
+        # Qwen on vLLM OpenAI-compatible embeddings API
         resp = self._client.post(
             "/v1/embeddings",
             json={
@@ -217,8 +221,8 @@ def get_embedder() -> BaseEmbedder:
     backend = settings.model_backend
     log.info("Initialising embedder: backend=%s", backend)
 
-    if backend == ModelBackend.VLLM:
-        return VLLMEmbedder()
+    if backend == ModelBackend.QWEN:
+        return QWENEmbedder()
     if backend == ModelBackend.OPENAI:
         return OpenAIEmbedder()
     if backend == ModelBackend.GEMINI:

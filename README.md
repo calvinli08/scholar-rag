@@ -51,7 +51,7 @@ Dense vector search alone misses exact terminology — critical in scientific li
 - **Reciprocal Rank Fusion (RRF)** to merge ranked lists without score normalization headaches
 
 **Embedding backends** — switch via `EMBED_BACKEND`:
-- **Local:** vLLM pooling models — runs on GPU, OpenAI-compatible API, no API key needed
+- **Local:** Qwen on vLLM — Qwen embedding models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
 - **Hosted:** `text-embedding-3-large` (OpenAI) or `embed-english-v3.0` (Cohere) for maximum retrieval quality
 
 ### 📄 Semantic Chunking for Research Papers
@@ -67,16 +67,16 @@ Short natural language queries fail against dense academic text. [HyDE (Hypothet
 After initial retrieval (top-50), a reranker rescores chunk-query pairs for precision. Top-8 chunks form the context window.
 
 **Reranker backends** — switch via `RERANKER_BACKEND`:
-- **Local:** vLLM pooling models with reranking — runs on GPU, OpenAI-compatible API, no API key needed
+- **Local:** Qwen on vLLM — Qwen reranker models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
 - **Hosted:** Cohere Rerank API — best out-of-the-box quality, easy to swap in for production
 
 ### 🖥️ Local LLM Support
 ScholarRAG runs fully offline. The LLM backend is provider-agnostic:
 - **Ollama** — run `llama3`, `mistral`, `phi3`, or any GGUF model locally via a drop-in OpenAI-compatible endpoint
-- **vLLM** — production-grade local inference with PagedAttention for higher throughput
+- **Qwen on vLLM** — Qwen models hosted on vLLM server for production-grade local inference with PagedAttention for higher throughput
 - **Hosted fallback** — OpenAI / Cohere APIs still supported via the same interface
 
-Switch backends with a single env variable: `LLM_BACKEND=ollama|vllm|openai|cohere`
+Switch backends with a single env variable: `LLM_BACKEND=qwen|ollama|openai|cohere`
 
 ### 📊 Evaluation Built In
 RAG without eval is guesswork. ScholarRAG ships with:
@@ -89,69 +89,169 @@ Eval harness uses [RAGAS](https://github.com/explodinggradients/ragas) + a curat
 
 ---
 
-## Quickstart
+## Supported Models
+
+### OpenAI Embedding Models
+| Model | Dimensions | Description |
+|-------|------------|-------------|
+| `text-embedding-3-large` | 1024 (default) | Best quality, recommended for production |
+| `text-embedding-3-small` | 1024 | Faster, lower cost alternative |
+
+### Gemini Embedding Models
+| Model | Dimensions | Description |
+|-------|------------|-------------|
+| `gemini-embedding-001` | 1536 (default) | First-gen Gemini embeddings |
+| `gemini-embedding-002` | 1536 | Improved Gemini embeddings |
+
+### Qwen Models (hosted on vLLM)
+ScholarRAG exclusively supports Qwen family models when running locally on vLLM. This ensures optimal compatibility and performance.
+
+**Embedding Models:**
+| Model | Dimensions | Description |
+|-------|------------|-------------|
+| `Qwen/Qwen3-Embedding-0.6B` | 1024 (default) | Lightweight, fast inference |
+| `Qwen/Qwen3-Embedding-4B` | 1024 | Balanced quality/speed |
+| `Qwen/Qwen3-Embedding-8B` | 1024 | Highest quality embedding |
+
+**Reranker Models:**
+| Model | Description |
+|-------|-------------|
+| `Qwen/Qwen3-Reranker-0.6B` | Lightweight, fast reranking (default) |
+| `Qwen/Qwen3-Reranker-4B` | Balanced quality/speed |
+| `Qwen/Qwen3-Reranker-8B` | Highest quality reranking |
+
+**LLM Models (Instruct variants for chat/completion):**
+| Model | Description |
+|-------|-------------|
+| `Qwen/Qwen2.5-7B-Instruct` | Entry-level Qwen2.5 |
+| `Qwen/Qwen2.5-14B-Instruct` | Mid-range Qwen2.5 |
+| `Qwen/Qwen2.5-32B-Instruct` | High-quality Qwen2.5 |
+| `Qwen/Qwen2.5-72B-Instruct` | Premium Qwen2.5 |
+| `Qwen/Qwen3-8B-Instruct` | Entry-level Qwen3 |
+| `Qwen/Qwen3-14B-Instruct` | Mid-range Qwen3 |
+| `Qwen/Qwen3-32B-Instruct` | High-quality Qwen3 |
+| `Qwen/Qwen3.5-9B` | Entry-level Qwen3.5 |
+| `Qwen/Qwen3.5-27B-FP8` | Quantized for efficiency |
+| `Qwen/Qwen3.5-397B-A17B-FP8` | Flagship model (default) |
+
+---
+
+## OpenAI & Gemini Quickstart
+
+To run ScholarRAG with OpenAI or Gemini models, simply update the `.env` file with your preferred embedding and text-generation models, along with your API key.
+
+## Qwen vLLM Quickstart
+
+To run ScholarRAG fully locally with Qwen models on vLLM, follow these steps:
+
+### 1. Install vLLM
 
 ```bash
-# Clone and install
-git clone https://github.com/yourusername/scholar-rag
-cd scholar-rag
-pip install -r requirements.txt
-
-# Set credentials
-cp .env.example .env
-# Choose your backends (all default to local if unset):
-#
-#   EMBED_BACKEND=vllm          (local vLLM, default)
-#   EMBED_BACKEND=ollama        (local via Ollama)
-#   EMBED_BACKEND=openai        (hosted)
-#   EMBED_BACKEND=cohere        (hosted)
-#
-#   RERANKER_BACKEND=vllm       (local vLLM, default)
-#   RERANKER_BACKEND=cohere     (hosted, higher quality)
-#
-#   LLM_BACKEND=ollama          (local, recommended)
-#   LLM_BACKEND=vllm            (local, high-throughput)
-#   LLM_BACKEND=openai          (hosted fallback)
-#   LLM_BACKEND=cohere          (hosted fallback)
-
-# Fully local — zero API keys required (vLLM for embeddings/reranking, Ollama for LLM)
-export EMBED_BACKEND=vllm
-export VLLM_EMBED_MODEL=intfloat/e5-mistral-7b-instruct
-export RERANKER_BACKEND=vllm
-export VLLM_RERANKER_MODEL=BAAI/bge-reranker-v2-minimum
-export LLM_BACKEND=ollama
-export OLLAMA_MODEL=llama3
-ollama pull llama3
-
-# Hosted embeddings + reranker (higher quality, needs API keys)
-export EMBED_BACKEND=openai
-export OPENAI_API_KEY=sk-...
-export RERANKER_BACKEND=cohere
-export COHERE_API_KEY=...
-
-# Ingest a paper
-python -m ingestion.pdf_parser --input papers/attention_is_all_you_need.pdf
-python -m ingestion.embedder --run-all
-
-# Run the API
-uvicorn api.main:app --reload
-
-# Run the Streamlit demo
-streamlit run frontend/app.py
-
-# Run evals
-python eval/run_eval.py --test-set eval/test_set.json
+pip install vllm
 ```
+
+### 2. Start vLLM Server
+
+Launch vLLM with your chosen Qwen models. You can serve multiple models simultaneously on different ports, or use a single server with model switching.
+
+**For embedding + reranking + LLM (recommended setup):**
+
+```bash
+# Terminal 1: LLM server (port 8000)
+python -m vllm.entrypoints.openai.api_server \
+    --model Qwen/Qwen3.5-397B-A17B-FP8 \
+    --port 8000 \
+    --tensor-parallel-size 1 \
+    --gpu-memory-utilization 0.8
+
+# Terminal 2: Embedding server (port 8001)
+python -m vllm.entrypoints.openai.api_server \
+    --model Qwen/Qwen3-Embedding-0.6B \
+    --port 8001 \
+    --task pooling \
+    --gpu-memory-utilization 0.8
+
+# Terminal 3: Reranker server (port 8002)
+python -m vllm.entrypoints.openai.api_server \
+    --model Qwen/Qwen3-Reranker-0.6B \
+    --port 8002 \
+    --task scoring \
+    --gpu-memory-utilization 0.8
+```
+
+### 3. Configure Environment
+
+```bash
+export EMBED_BACKEND=qwen
+export QWEN_EMBED_MODEL=Qwen/Qwen3-Embedding-0.6B
+export QWEN_URL=http://localhost:8001
+
+export RERANKER_BACKEND=qwen
+export QWEN_RERANKER_MODEL=Qwen/Qwen3-Reranker-0.6B
+# Note: reranker uses same QWEN_URL base, appends /v1/rerank
+
+export LLM_BACKEND=qwen
+export QWEN_MODEL=Qwen/Qwen3.5-397B-A17B-FP8
+export QWEN_URL=http://localhost:8000
+```
+
+### 4. Verify Setup
+
+```bash
+# Test embedding endpoint
+curl http://localhost:8001/v1/embeddings \
+    -H "Content-Type: application/json" \
+    -d '{"model": "Qwen/Qwen3-Embedding-0.6B", "input": "test"}'
+
+# Test LLM endpoint
+curl http://localhost:8000/v1/chat/completions \
+    -H "Content-Type: application/json" \
+    -d '{"model": "Qwen/Qwen3.5-397B-A17B-FP8", "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+### Hardware Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| GPU Memory | 24 GB | 80 GB (A100/H100) |
+| For 397B MoE | 48 GB (FP8) | 80 GB+ |
+| For 7B models | 16 GB | 24 GB |
+
+**Note:** The FP8 quantized variants (e.g., `Qwen3.5-397B-A17B-FP8`) significantly reduce memory requirements and are recommended for production deployment.
+
+### Single-Server Alternative
+
+If you have limited GPU memory, you can run smaller models on a single vLLM instance:
+
+```bash
+python -m vllm.entrypoints.openai.api_server \
+    --model Qwen/Qwen2.5-7B-Instruct \
+    --port 8000 \
+    --gpu-memory-utilization 0.9
+```
+
+Then configure:
+```bash
+export LLM_BACKEND=qwen
+export QWEN_MODEL=Qwen/Qwen2.5-7B-Instruct
+export QWEN_URL=http://localhost:8000
+```
+
+---
+
+## Quickstart
+
+TODO
 
 ---
 
 ## Design Decisions & Tradeoffs
 
 **Why support local embeddings?**
-vLLM pooling models give you access to high-quality embedding models that run entirely offline with high throughput. For a project ingesting potentially sensitive research, keeping embeddings local removes a meaningful data exposure risk — and it eliminates per-token API costs during the ingestion phase entirely.
+Qwen embedding models hosted on vLLM server give you access to high-quality embedding models that run entirely offline with high throughput. For a project ingesting potentially sensitive research, keeping embeddings local removes a meaningful data exposure risk — and it eliminates per-token API costs during the ingestion phase entirely.
 
 **Why two reranker options (local vs hosted)?**
-vLLM reranking runs on GPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference.
+Qwen reranker models hosted on vLLM server run on GPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference.
 
 **Why support local LLMs at all?**  
 Two reasons: zero inference cost during development, no data leaving your machine (important for proprietary research).

@@ -31,12 +31,13 @@ def get_llm_instance():
             api_key=settings.openai_api_key,
             callbacks=callbacks,
         )
-    elif backend == ModelBackend.VLLM:
+    elif backend == ModelBackend.QWEN:
+        # Qwen models hosted on vLLM server - uses OpenAI-compatible API
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
-            model=settings.vllm_model,
+            model=settings.qwen_model,
             temperature=settings.llm_temperature,
-            base_url=settings.vllm_url,
+            base_url=settings.qwen_url,
             api_key="vllm",
             callbacks=callbacks,
         )
@@ -65,10 +66,11 @@ def get_eval_llm_instance():
             model=settings.openai_model,
             api_key=settings.openai_api_key
         )
-    elif backend == ModelBackend.VLLM:
+    elif backend == ModelBackend.QWEN:
+        # Qwen models hosted on vLLM server - uses OpenAI-compatible API for DeepEval
         from deepeval.models import DeepEvalBaseLLM
 
-        class VLLMWrapper(DeepEvalBaseLLM):
+        class QWENWrapper(DeepEvalBaseLLM):
             def __init__(self, model: str, base_url: str) -> None:
                 self._model = model
                 self._base_url = base_url
@@ -96,9 +98,9 @@ def get_eval_llm_instance():
             def get_model_name(self) -> str:
                 return self._model
 
-        return VLLMWrapper(
-            model=settings.vllm_model,
-            base_url=settings.vllm_url
+        return QWENWrapper(
+            model=settings.qwen_model,
+            base_url=settings.qwen_url
         )
     elif backend == ModelBackend.GEMINI:
         from deepeval.models import GeminiModel
