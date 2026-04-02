@@ -63,46 +63,61 @@ async def retrieve_chunks(
     return merged[:top_k]
 
 
+def _get_embedding_column(model_backend: str) -> str:
+    """Return the embedding column name for the specified model backend."""
+    mapping = {
+        "openai": "embedding_openai",
+        "gemini": "embedding_gemini",
+        "qwen": "embedding_qwen",
+    }
+    return mapping[model_backend]
+
+
 async def _dense_retrieve(query: str, k: int = 50) -> list[RetrievedChunk]:
     """
     Retrieve chunks using vector similarity search.
-    
+
     Args:
         query: Query string to embed and search
         k: Number of results to return
-        
+
     Returns:
         List of RetrievedChunk with dense_rank set
     """
     from api.embedder import embed_query
-    
+
     # Embed the query
     query_embedding = await embed_query(query)
-    
+
+    # Determine embedding column based on model_backend setting
+    embedding_column = _get_embedding_column(settings.model_backend.value)
+
     pool = get_pool()
     results = []
-    
+
     with pool.connection() as conn:
         with conn.cursor() as cur:
             # Use pgvector cosine distance (<=>)
-            cur.execute("""
-                SELECT 
-                    chunk_id, 
-                    paper_id, 
-                    text, 
-                    section, 
-                    page, 
+            # Dynamically select the embedding column based on model_backend
+            sql = f"""
+                SELECT
+                    chunk_id,
+                    paper_id,
+                    text,
+                    section,
+                    page,
                     chunk_index,
-                    title, 
-                    authors, 
-                    year, 
-                    doi, 
+                    title,
+                    authors,
+                    year,
+                    doi,
                     arxiv_id,
-                    1 - (embedding <=> %s::vector) AS similarity
+                    1 - ({embedding_column} <=> %s::vector) AS similarity
                 FROM chunks
-                ORDER BY embedding <=> %s::vector
+                ORDER BY {embedding_column} <=> %s::vector
                 LIMIT %s
-            """, (query_embedding, query_embedding, k))
+            """
+            cur.execute(sql, (query_embedding, query_embedding, k))
             
             rows = cur.fetchall()
             
