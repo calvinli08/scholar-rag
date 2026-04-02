@@ -124,15 +124,20 @@ class BM25Index:
 # Indexer
 # ---------------------------------------------------------------------------
 
-_UPSERT = """
+def _get_upsert_sql(table: str, embedding_column: str) -> str:
+    """
+    Generate UPSERT SQL for the specified embedding column.
+    Only the specified embedding column is updated; the other two remain untouched.
+    """
+    return f"""
 INSERT INTO {table}
-    (chunk_id, paper_id, text, embedding, section, page, chunk_index,
+    (chunk_id, paper_id, text, {embedding_column}, section, page, chunk_index,
      title, authors, year, doi, arxiv_id)
 VALUES
     (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
 ON CONFLICT (chunk_id) DO UPDATE SET
     text        = EXCLUDED.text,
-    embedding   = EXCLUDED.embedding,
+    {embedding_column} = EXCLUDED.{embedding_column},
     section     = EXCLUDED.section,
     page        = EXCLUDED.page,
     chunk_index = EXCLUDED.chunk_index,
@@ -142,6 +147,16 @@ ON CONFLICT (chunk_id) DO UPDATE SET
     doi         = EXCLUDED.doi,
     arxiv_id    = EXCLUDED.arxiv_id;
 """
+
+
+def _get_embedding_column(model_backend: str) -> str:
+    """Return the embedding column name for the specified model backend."""
+    mapping = {
+        "openai": "embedding_openai",
+        "gemini": "embedding_gemini",
+        "qwen": "embedding_qwen",
+    }
+    return mapping[model_backend]
 
 
 class Indexer:
@@ -275,7 +290,9 @@ class Indexer:
     # ------------------------------------------------------------------
 
     def _write_pgvector(self, chunks: list[Chunk]) -> None:
-        sql = _UPSERT.format(table=self._table)
+        embedding_column = _get_embedding_column(settings.model_backend.value)
+        sql = _get_upsert_sql(self._table, embedding_column)
+        
         rows = [
             (
                 c.chunk_id,
@@ -293,6 +310,11 @@ class Indexer:
             )
             for c in chunks
         ]
+
         with self._conn.cursor() as cur:
             cur.executemany(sql, rows)
-        log.debug("pgvector: upserted %d rows into %r", len(rows), self._table)
+            
+        log.debug(
+            "pgvector: upserted %d rows into %r (embedding column: %s)",
+            len(rows), self._table, embedding_column
+        )
