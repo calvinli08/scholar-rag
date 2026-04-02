@@ -13,6 +13,25 @@ from config import settings
 log = get_logger(__name__)
 
 
+def _escape_fts_query(query: str) -> str:
+    """
+    Escape special characters for ParadeDB full-text search queries.
+    
+    ParadeDB's @@@ operator interprets certain characters as query syntax.
+    This escapes them to treat the query as literal text.
+    
+    Special chars to escape: + - & | ! ( ) { } [ ] ^ " ~ * ? : \ and space
+    """
+    # Order matters: escape backslash first
+    special_chars = ['\\', '+', '-', '&', '|', '!', '(', ')', '{', '}', 
+                     '[', ']', '^', '"', '~', '*', '?', ':', ' ']
+    
+    escaped = query
+    for char in special_chars:
+        escaped = escaped.replace(char, f'\\{char}')
+    
+    return escaped
+
 async def retrieve_chunks(
     query: str,
     top_k: int = 5,
@@ -120,15 +139,28 @@ async def _sparse_retrieve(query: str, k: int = 50) -> list[RetrievedChunk]:
         with conn.cursor() as cur:
             # Use pg_search BM25 for true BM25 scoring
             # The paradedb.score() function returns the BM25 score
+            # Pass the key_field column (chunk_id) directly to the score function
+            # Escape special characters in the query to avoid parsing errors
+            escaped_query = _escape_fts_query(query)
             cur.execute("""
-                SELECT chunk_id, paper_id, text, section, page, chunk_index,
-                       title, authors, year, doi, arxiv_id,
-                       paradedb.score(id => chunk_id) AS bm25_score
+                SELECT 
+                    chunk_id, 
+                    paper_id, 
+                    text, 
+                    section, 
+                    page, 
+                    chunk_index,
+                    title, 
+                    authors, 
+                    year, 
+                    doi, 
+                    arxiv_id,
+                    paradedb.score(chunk_id) AS bm25_score
                 FROM chunks
-                WHERE text @@@ %s
+                WHERE text ||| %s
                 ORDER BY bm25_score DESC
                 LIMIT %s
-            """, (query, k))
+            """, (escaped_query, k))
             
             rows = cur.fetchall()
             

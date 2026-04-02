@@ -75,6 +75,36 @@ async def rerank_chunks(
         scores = [0.0] * len(chunks)
         for result in response.results:
             scores[result.index] = result.relevance_score
+
+    elif backend == RerankerBackend.GEMINI:
+        from google import genai
+        import numpy as np
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+
+        # Get embeddings for query and all documents
+        # Use SEMANTIC_SIMILARITY task type for optimal reranking
+        query_result = client.models.embed_content(
+            model=settings.gemini_embed_model,
+            contents=query,
+        )
+        query_embedding = np.array(query_result.embeddings[0].values)
+
+        # Embed all documents in batch
+        doc_texts = [chunk.text for chunk in chunks]
+        doc_result = client.models.embed_content(
+            model=settings.gemini_embed_model,
+            contents=doc_texts,
+        )
+        doc_embeddings = [np.array(emb.values) for emb in doc_result.embeddings]
+
+        # Calculate cosine similarity between query and each document
+        scores = []
+        for doc_emb in doc_embeddings:
+            # Cosine similarity via dot product (embeddings are normalized)
+            similarity = float(np.dot(query_embedding, doc_emb))
+            scores.append(similarity)
+
     else:
         raise ValueError(f"Unknown reranker backend: {backend}")
 

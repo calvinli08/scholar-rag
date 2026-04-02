@@ -1,0 +1,7 @@
+FROM astral/uv:python3.12-trixie
+
+RUN mkdir /home/app
+
+EXPOSE 8501
+
+ENTRYPOINT [ "tail", "-f", "/dev/null" ]

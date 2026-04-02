@@ -22,7 +22,6 @@ help:
 	@echo "    make ingest      Ingest all PDFs in ./papers/"
 	@echo ""
 
-# ── Database ──────────────────────────────────────────────────────────────────
 db-up:
 	docker compose up -d db
 	@echo "Waiting for DB to be healthy..."
@@ -41,13 +40,9 @@ db-shell:
 db-logs:
 	docker compose logs -f db
 
-pgadmin:
-	docker compose --profile tools up -d pgadmin
-	@echo "pgAdmin available at http://localhost:5050"
-	@echo "  Email   : admin@scholarrag.local"
-	@echo "  Password: admin"
+dev-up:
+	docker compose -f docker/docker-compose.yml up -d
 
-# ── Dev ───────────────────────────────────────────────────────────────────────
 test:
 	pytest tests/ -v
 

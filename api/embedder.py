@@ -75,7 +75,19 @@ async def embed_query(query: str) -> list[float]:
             input_type="search_query",
         )
 
-        embedding = response.embeddings[0]
+        embedding = response.embeddings.float[0]
+
+    elif backend == EmbedBackend.GEMINI:
+        from google import genai
+
+        client = genai.Client(api_key=settings.gemini_api_key)
+
+        result = client.models.embed_content(
+            model=settings.gemini_embed_model,
+            contents=query,
+        )
+
+        embedding = result.embeddings[0].values
 
     else:
         raise ValueError(f"Unknown embed backend: {backend}")
