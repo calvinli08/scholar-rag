@@ -1,11 +1,10 @@
 """
 Embedding client for ScholarRAG.
 
-Supports four backends controlled by EMBED_BACKEND:
+Supports three backends controlled by MODEL_BACKEND:
   vllm    — vLLM pooling models (local, default)
-  ollama  — Ollama embedding endpoint (local, OpenAI-compatible)
   openai  — OpenAI Embeddings API (hosted)
-  cohere  — Cohere Embed API (hosted)
+  gemini  — Google Gemini Embedding API (hosted)
 
 All backends share the same interface: embed(texts) → list[list[float]].
 Batch size, retry logic, and progress logging are handled uniformly
@@ -22,7 +21,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Protocol
 
-from config import EmbedBackend, settings
+from config import ModelBackend, settings
 from logger import get_logger
 from data_models.models import Chunk
 
@@ -141,44 +140,6 @@ class VLLMEmbedder(BaseEmbedder):
 
 
 # ---------------------------------------------------------------------------
-# Ollama (local)
-# ---------------------------------------------------------------------------
-
-class OllamaEmbedder(BaseEmbedder):
-    """
-    Local embedding via Ollama's OpenAI-compatible /api/embeddings endpoint.
-    Requires Ollama running locally and the model pulled:
-      ollama pull nomic-embed-text
-    """
-
-    def __init__(self) -> None:
-        import httpx
-
-        self._client = httpx.Client(base_url=settings.ollama_embed_url, timeout=60)
-        self._model = settings.ollama_embed_model
-        self._dim = settings.embed_dim  # Must be set correctly in .env for Ollama models
-        log.info(
-            "Ollama embedder ready (model=%s, url=%s)",
-            self._model, settings.ollama_embed_url,
-        )
-
-    def embed(self, texts: list[str]) -> list[list[float]]:
-        vectors: list[list[float]] = []
-        for text in texts:
-            resp = self._client.post(
-                "/api/embeddings",
-                json={"model": self._model, "prompt": text},
-            )
-            resp.raise_for_status()
-            vectors.append(resp.json()["embedding"])
-        return vectors
-
-    @property
-    def dimension(self) -> int:
-        return self._dim
-
-
-# ---------------------------------------------------------------------------
 # OpenAI (hosted)
 # ---------------------------------------------------------------------------
 
@@ -186,6 +147,7 @@ class OpenAIEmbedder(BaseEmbedder):
     """
     Hosted embedding via OpenAI Embeddings API.
     Requires OPENAI_API_KEY in .env.
+    Supports text-embedding-3-large and text-embedding-3-small.
     """
 
     def __init__(self) -> None:
@@ -193,19 +155,14 @@ class OpenAIEmbedder(BaseEmbedder):
 
         self._client = OpenAI(api_key=settings.openai_api_key)
         self._model = settings.openai_embed_model
-        # Dimensions for known OpenAI models
-        _dims = {
-            "text-embedding-3-large": 3072,
-            "text-embedding-3-small": 1536,
-            "text-embedding-ada-002": 1536,
-        }
-        self._dim = _dims.get(self._model, settings.embed_dim)
+        self._dim = settings.openai_embed_dim
         log.info("OpenAI embedder ready (model=%s, dim=%d)", self._model, self._dim)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         response = self._client.embeddings.create(
             input=texts,
             model=self._model,
+            dimensions=self._dim,
         )
         return [item.embedding for item in response.data]
 
@@ -215,36 +172,33 @@ class OpenAIEmbedder(BaseEmbedder):
 
 
 # ---------------------------------------------------------------------------
-# Cohere (hosted)
+# Gemini (hosted)
 # ---------------------------------------------------------------------------
 
-class CohereEmbedder(BaseEmbedder):
+class GeminiEmbedder(BaseEmbedder):
     """
-    Hosted embedding via Cohere Embed API.
-    Requires COHERE_API_KEY in .env.
+    Hosted embedding via Google Gemini Embedding API.
+    Requires GEMINI_API_KEY in .env.
+    Supports gemini-embedding-001 and gemini-embedding-002.
     """
 
     def __init__(self) -> None:
-        import cohere
+        from google import genai
 
-        self._client = cohere.ClientV2(api_key=settings.cohere_api_key)
-        self._model = settings.cohere_embed_model
-        self._dim = settings.embed_dim
-        log.info("Cohere embedder ready (model=%s)", self._model)
+        self._client = genai.Client(api_key=settings.gemini_api_key)
+        self._model = settings.gemini_embed_model
+        # 1536 dimensions preserves compatibility between gemini-embedding-001 and gemini-embedding-002
+        self._dim = 1536
+        log.info("Gemini embedder ready (model=%s, dim=%d)", self._model, self._dim)
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        response = self._client.embed(
-            texts=texts,
+        # 1536 dimensions preserves compatibility between gemini-embedding-001 and gemini-embedding-002
+        result = self._client.models.embed_content(
             model=self._model,
-            input_type="search_document",
-            embedding_types=["float"]
+            contents=texts,
+            config={"output_dimensionality": 1536},
         )
-
-        for v in response.embeddings:
-            if "float" in v[0]:
-                return v[1]
-
-        raise Exception("Failed to create float embeddings")
+        return [emb.values for emb in result.embeddings]
 
     @property
     def dimension(self) -> int:
@@ -260,19 +214,17 @@ def get_embedder() -> BaseEmbedder:
     Return the configured embedding backend.
     Call once at startup and reuse the instance — model loading is expensive.
     """
-    backend = settings.embed_backend
+    backend = settings.model_backend
     log.info("Initialising embedder: backend=%s", backend)
 
-    if backend == EmbedBackend.VLLM:
+    if backend == ModelBackend.VLLM:
         return VLLMEmbedder()
-    if backend == EmbedBackend.OLLAMA:
-        return OllamaEmbedder()
-    if backend == EmbedBackend.OPENAI:
+    if backend == ModelBackend.OPENAI:
         return OpenAIEmbedder()
-    if backend == EmbedBackend.COHERE:
-        return CohereEmbedder()
+    if backend == ModelBackend.GEMINI:
+        return GeminiEmbedder()
 
-    raise ValueError(f"Unknown EMBED_BACKEND: {backend!r}")
+    raise ValueError(f"Unknown MODEL_BACKEND: {backend!r}")
 
 
 

@@ -5,86 +5,99 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from api.retriever import retrieve_chunks
 from ingestion.embedder import get_embedder
-from config import settings
+from api.api_logger import APICallLogger, _is_hosted_backend
+from config import settings, ModelBackend
 from logger import get_logger, configure_logging
 
 configure_logging()
 
 log = get_logger(__name__)
 
-# Configuration
-GROUNDING_THRESHOLD = 0.9
-MAX_RETRIES = 2
-
 
 def get_llm_instance():
-    """Initialize the LLM based on settings.llm_backend."""
-    backend = settings.llm_backend.lower()
+    """Initialize the LLM based on settings.model_backend."""
+    backend = settings.model_backend
 
-    if backend == "openai":
+    # Create callback handler for hosted backends
+    callbacks = []
+    if _is_hosted_backend(backend.value):
+        callbacks.append(APICallLogger(backend=backend.value))
+
+    if backend == ModelBackend.OPENAI:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             model=settings.openai_model,
             temperature=settings.llm_temperature,
-            api_key=settings.openai_api_key
+            api_key=settings.openai_api_key,
+            callbacks=callbacks,
         )
-    elif backend == "ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=settings.ollama_model,
-            temperature=settings.llm_temperature,
-            base_url=settings.ollama_llm_url
-        )
-    elif backend == "vllm":
+    elif backend == ModelBackend.VLLM:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             model=settings.vllm_model,
             temperature=settings.llm_temperature,
             base_url=settings.vllm_url,
-            api_key="ollama"  # vLLM uses OpenAI-compatible API
+            api_key="vllm",
+            callbacks=callbacks,
         )
-    elif backend == "cohere":
-        from langchain_cohere import ChatCohere
-        return ChatCohere(
-            model=settings.cohere_model,
-            temperature=settings.llm_temperature,
-            cohere_api_key=settings.cohere_api_key
-        )
-    elif backend == "gemini":
+    elif backend == ModelBackend.GEMINI:
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
             model=settings.gemini_model,
             temperature=settings.llm_temperature,
-            api_key=settings.gemini_api_key
+            api_key=settings.gemini_api_key,
+            callbacks=callbacks,
         )
     else:
         raise ValueError(f"Unsupported LLM backend: {backend}")
 
 
 def get_eval_llm_instance():
-    """Initialize the LLM for evaluation based on settings.eval_backend using DeepEval native models."""
-    backend = settings.eval_backend.lower()
+    """Initialize the LLM for evaluation based on settings.model_backend using DeepEval native models."""
+    backend = settings.model_backend
 
-    if backend == "openai":
+    if backend == ModelBackend.OPENAI:
         from deepeval.models import GPTModel
         return GPTModel(
             model=settings.openai_eval_model,
             api_key=settings.openai_api_key
         )
-    elif backend == "ollama":
-        from deepeval.models import OllamaModel
-        return OllamaModel(
-            model=settings.ollama_eval_model,
-            base_url=settings.ollama_eval_url
-        )
-    elif backend == "vllm":
-        from deepeval.models import OllamaModel
-        # vLLM uses OpenAI-compatible API, accessible via OllamaModel with custom base_url
-        return OllamaModel(
+    elif backend == ModelBackend.VLLM:
+        from deepeval.models import DeepEvalBaseLLM
+
+        class VLLMWrapper(DeepEvalBaseLLM):
+            def __init__(self, model: str, base_url: str) -> None:
+                self._model = model
+                self._base_url = base_url
+
+            def load_model(self):
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(
+                    model=self._model,
+                    base_url=self._base_url,
+                    api_key="vllm",
+                )
+
+            def generate(self, prompt: str) -> str:
+                chat_model = self.load_model()
+                from langchain_core.messages import HumanMessage
+                response = chat_model.invoke([HumanMessage(content=prompt)])
+                return response.content
+
+            async def a_generate(self, prompt: str) -> str:
+                chat_model = self.load_model()
+                from langchain_core.messages import HumanMessage
+                response = await chat_model.ainvoke([HumanMessage(content=prompt)])
+                return response.content
+
+            def get_model_name(self) -> str:
+                return self._model
+
+        return VLLMWrapper(
             model=settings.vllm_eval_model,
             base_url=settings.vllm_eval_url
         )
-    elif backend == "gemini":
+    elif backend == ModelBackend.GEMINI:
         from deepeval.models import GeminiModel
         return GeminiModel(
             model=settings.gemini_eval_model,
@@ -92,6 +105,11 @@ def get_eval_llm_instance():
         )
     else:
         raise ValueError(f"Unsupported evaluation backend: {backend}")
+
+
+# Configuration
+GROUNDING_THRESHOLD = 0.9
+MAX_RETRIES = 2
 
 
 class RAGState(TypedDict):
