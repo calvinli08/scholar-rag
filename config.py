@@ -99,12 +99,6 @@ class Settings(BaseSettings):
     grounding_threshold: float = 0.9
     max_retries: int = 2
 
-    # -- Evaluation --
-    vllm_eval_url: str = "http://localhost:8000"
-    vllm_eval_model: str = "mistralai/Mistral-7B-Instruct-v0.3"
-    openai_eval_model: str = "gpt-4o-mini"
-    gemini_eval_model: str = "gemini-2.5-flash-lite"
-
     # -- Eval --
     eval_test_set_path: str = "eval/test_set.json"
     eval_output_path: str = "eval/results.json"
