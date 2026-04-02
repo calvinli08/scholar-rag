@@ -1,6 +1,7 @@
 """
 Query embedding module for retrieval.
-Supports multiple backends: vLLM (local), OpenAI, Gemini.
+Supports multiple backends: Qwen on vLLM (local), OpenAI, Gemini.
+Note: Qwen models must be hosted on vLLM server to work with ScholarRAG.
 """
 
 from __future__ import annotations
@@ -22,14 +23,14 @@ async def embed_query(query: str) -> list[float]:
     """
     backend = settings.model_backend
 
-    if backend == ModelBackend.VLLM:
+    if backend == ModelBackend.QWEN:
         import httpx
 
-        # vLLM OpenAI-compatible embeddings API
+        # Qwen embedder hosted on vLLM server (OpenAI-compatible embeddings API)
         response = await httpx.AsyncClient().post(
-            f"{settings.vllm_url}/v1/embeddings",
+            f"{settings.qwen_url}/v1/embeddings",
             json={
-                "model": settings.vllm_embed_model,
+                "model": settings.qwen_embed_model,
                 "input": query,
             },
         )

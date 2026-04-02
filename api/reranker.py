@@ -1,6 +1,7 @@
 """
 Reranking module for retrieved chunks.
-Supports multiple backends: vLLM (local), OpenAI, Gemini API.
+Supports multiple backends: Qwen on vLLM (local), OpenAI, Gemini API.
+Note: Qwen models must be hosted on vLLM server to work with ScholarRAG.
 """
 
 from __future__ import annotations
@@ -34,14 +35,14 @@ async def rerank_chunks(
 
     backend = settings.model_backend
 
-    if backend == ModelBackend.VLLM:
+    if backend == ModelBackend.QWEN:
         import httpx
 
-        # vLLM rerank API (OpenAI-compatible)
+        # Qwen reranker hosted on vLLM server (OpenAI-compatible API)
         response = httpx.post(
-            f"{settings.vllm_url}/v1/rerank",
+            f"{settings.qwen_url}/v1/rerank",
             json={
-                "model": settings.vllm_reranker_model,
+                "model": settings.qwen_reranker_model,
                 "query": query,
                 "documents": [chunk.text for chunk in chunks],
                 "top_n": len(chunks),
