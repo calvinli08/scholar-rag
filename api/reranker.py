@@ -1,13 +1,13 @@
 """
 Reranking module for retrieved chunks.
-Supports multiple backends: vLLM (local), Cohere API.
+Supports multiple backends: vLLM (local), OpenAI, Gemini API.
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
 
-from config import settings, RerankerBackend
+from config import settings, ModelBackend
 from logger import get_logger
 from data_models.models import RetrievedChunk
 
@@ -32,12 +32,9 @@ async def rerank_chunks(
     if not chunks:
         return []
 
-    if settings.reranker_backend == RerankerBackend.NONE:
-        return chunks[:top_k or settings.reranker_top_k]
+    backend = settings.model_backend
 
-    backend = settings.reranker_backend
-
-    if backend == RerankerBackend.VLLM:
+    if backend == ModelBackend.VLLM:
         import httpx
 
         # vLLM rerank API (OpenAI-compatible)
@@ -53,40 +50,55 @@ async def rerank_chunks(
         )
         response.raise_for_status()
         data = response.json()
-        
+
         # vLLM returns {"results": [{"index": 0, "relevance_score": 0.9}, ...]}
         scores = [0.0] * len(chunks)
         for result in data["results"]:
             scores[result["index"]] = result["relevance_score"]
 
-    elif backend == RerankerBackend.COHERE:
-        import cohere
+    elif backend == ModelBackend.OPENAI:
+        from openai import OpenAI
+        import numpy as np
 
-        reranker = cohere.ClientV2(api_key=settings.cohere_api_key)
+        client = OpenAI(api_key=settings.openai_api_key)
 
-        response = reranker.rerank(
-            model=settings.cohere_reranker_model,
-            query=query,
-            documents=[chunk.text for chunk in chunks],
-            top_n=len(chunks),
+        # Get embeddings for query and all documents
+        # OpenAI embeddings are normalized, so cosine similarity = dot product
+        query_result = client.embeddings.create(
+            model=settings.openai_reranker_model,
+            input=query,
+            dimensions=settings.openai_embed_dim,
         )
+        query_embedding = np.array(query_result.data[0].embedding)
 
-        # Cohere returns results already sorted, extract scores
-        scores = [0.0] * len(chunks)
-        for result in response.results:
-            scores[result.index] = result.relevance_score
+        # Embed all documents in batch
+        doc_texts = [chunk.text for chunk in chunks]
+        doc_result = client.embeddings.create(
+            model=settings.openai_reranker_model,
+            input=doc_texts,
+            dimensions=settings.openai_embed_dim,
+        )
+        doc_embeddings = [np.array(emb.embedding) for emb in doc_result.data]
 
-    elif backend == RerankerBackend.GEMINI:
+        # Calculate cosine similarity between query and each document
+        # Since OpenAI embeddings are normalized, dot product equals cosine similarity
+        scores = []
+        for doc_emb in doc_embeddings:
+            similarity = float(np.dot(query_embedding, doc_emb))
+            scores.append(similarity)
+
+    elif backend == ModelBackend.GEMINI:
         from google import genai
         import numpy as np
 
         client = genai.Client(api_key=settings.gemini_api_key)
 
         # Get embeddings for query and all documents
-        # Use SEMANTIC_SIMILARITY task type for optimal reranking
+        # 1536 dimensions preserves compatibility between gemini-embedding-001 and gemini-embedding-002
         query_result = client.models.embed_content(
             model=settings.gemini_embed_model,
             contents=query,
+            config={"output_dimensionality": 1536},
         )
         query_embedding = np.array(query_result.embeddings[0].values)
 
@@ -95,6 +107,7 @@ async def rerank_chunks(
         doc_result = client.models.embed_content(
             model=settings.gemini_embed_model,
             contents=doc_texts,
+            config={"output_dimensionality": 1536},
         )
         doc_embeddings = [np.array(emb.values) for emb in doc_result.embeddings]
 

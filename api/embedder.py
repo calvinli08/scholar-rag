@@ -1,11 +1,11 @@
 """
 Query embedding module for retrieval.
-Supports multiple backends: vLLM (local), Ollama, OpenAI, Cohere.
+Supports multiple backends: vLLM (local), OpenAI, Gemini.
 """
 
 from __future__ import annotations
 
-from config import settings, EmbedBackend
+from config import settings, ModelBackend
 from logger import get_logger
 
 log = get_logger(__name__)
@@ -20,9 +20,9 @@ async def embed_query(query: str) -> list[float]:
     Returns:
         List of floats representing the embedding vector
     """
-    backend = settings.embed_backend
+    backend = settings.model_backend
 
-    if backend == EmbedBackend.VLLM:
+    if backend == ModelBackend.VLLM:
         import httpx
 
         # vLLM OpenAI-compatible embeddings API
@@ -38,21 +38,7 @@ async def embed_query(query: str) -> list[float]:
         data = response.json()
         embedding = data["data"][0]["embedding"]
 
-    elif backend == EmbedBackend.OLLAMA:
-        import httpx
-
-        response = await httpx.AsyncClient().post(
-            f"{settings.ollama_embed_url}/api/embeddings",
-            json={
-                "model": settings.ollama_embed_model,
-                "prompt": query,
-            },
-        )
-
-        response.raise_for_status()
-        embedding = response.json()["embedding"]
-
-    elif backend == EmbedBackend.OPENAI:
+    elif backend == ModelBackend.OPENAI:
         from openai import OpenAI
 
         embedder = OpenAI(api_key=settings.openai_api_key)
@@ -60,31 +46,21 @@ async def embed_query(query: str) -> list[float]:
         response = embedder.embeddings.create(
             model=settings.openai_embed_model,
             input=query,
+            dimensions=settings.openai_embed_dim,
         )
 
         embedding = response.data[0].embedding
 
-    elif backend == EmbedBackend.COHERE:
-        import cohere
-
-        embedder = cohere.ClientV2(api_key=settings.cohere_api_key)
-
-        response = embedder.embed(
-            texts=[query],
-            model=settings.cohere_embed_model,
-            input_type="search_query",
-        )
-
-        embedding = response.embeddings.float[0]
-
-    elif backend == EmbedBackend.GEMINI:
+    elif backend == ModelBackend.GEMINI:
         from google import genai
 
         client = genai.Client(api_key=settings.gemini_api_key)
 
+        # 1536 dimensions preserves compatibility between gemini-embedding-001 and gemini-embedding-002
         result = client.models.embed_content(
             model=settings.gemini_embed_model,
             contents=query,
+            config={"output_dimensionality": 1536},
         )
 
         embedding = result.embeddings[0].values

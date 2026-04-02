@@ -56,7 +56,7 @@ async def retrieve_chunks(
     merged = _reciprocal_rank_fusion(dense_results, sparse_results, k=settings.rrf_k)
     
     # Apply reranking if enabled
-    if use_reranker and settings.reranker_backend != "none":
+    if use_reranker:
         from api.reranker import rerank_chunks
         merged = await rerank_chunks(query, merged, top_k=top_k)
     
@@ -86,9 +86,19 @@ async def _dense_retrieve(query: str, k: int = 50) -> list[RetrievedChunk]:
         with conn.cursor() as cur:
             # Use pgvector cosine distance (<=>)
             cur.execute("""
-                SELECT chunk_id, paper_id, text, section, page, chunk_index,
-                       title, authors, year, doi, arxiv_id,
-                       1 - (embedding <=> %s::vector) AS similarity
+                SELECT 
+                    chunk_id, 
+                    paper_id, 
+                    text, 
+                    section, 
+                    page, 
+                    chunk_index,
+                    title, 
+                    authors, 
+                    year, 
+                    doi, 
+                    arxiv_id,
+                    1 - (embedding <=> %s::vector) AS similarity
                 FROM chunks
                 ORDER BY embedding <=> %s::vector
                 LIMIT %s
