@@ -111,8 +111,8 @@ for message in st.session_state.messages:
             with st.expander("📚 View Sources", expanded=False):
                 for i, source in enumerate(message["sources"], 1):
                     st.markdown(f"**Source {i}** (Score: {source.get('score', 'N/A'):.3f})")
-                    st.markdown(f"*Paper*: {source.get('paper_title', 'Unknown')}")
-                    st.markdown(f"*Chunk*: {source.get('chunk_text', '')[:200]}...")
+                    st.markdown(f"*Paper*: {source.get('chunk.paper_id', 'Unknown')}")
+                    st.markdown(f"*Chunk*: {source.get('text', '')[:200]}...")
                     st.divider()
 
 
