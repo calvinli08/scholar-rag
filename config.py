@@ -104,6 +104,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     log_level: str = "info"
+    debug: bool = True
 
     # -- Ingestion --
     upload_dir: str = "./uploads"
