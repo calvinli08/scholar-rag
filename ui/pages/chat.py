@@ -109,7 +109,8 @@ for message in st.session_state.messages:
         # Display sources if available
         if message.get("sources"):
             with st.expander("📚 View Sources", expanded=False):
-                for i, source in enumerate(message["sources"], 1):
+                for i, source in enumerate(message["sources"]):
+                    st.markdown(source)
                     st.markdown(f"**Source {i}** (Score: {source.get('score', 'N/A'):.3f})")
                     st.markdown(f"*Paper*: {source.get('chunk.paper_id', 'Unknown')}")
                     st.markdown(f"*Chunk*: {source.get('text', '')[:200]}...")
@@ -139,17 +140,25 @@ if prompt := st.chat_input("Ask a question about your research papers..."):
                 assistant_message = f"Sorry, I encountered an error: {result['error']}"
                 sources = []
             else:
+                # Debug: print full API response
+                if settings.debug:
+                    with st.expander("🔧 Debug: Full API Response", expanded=False):
+                        st.json(result)
+
                 answer = result.get("answer", "No answer generated.")
                 st.markdown(answer)
-                
+
                 sources = result.get("sources", [])
                 if sources:
                     with st.expander("📚 View Sources", expanded=True):
-                        for i, source in enumerate(sources, 1):
-                            st.markdown(f"**Source {i}** (Score: {source.get('score', 'N/A'):.3f})")
-                            st.markdown(f"*Paper*: {source.get('paper_title', 'Unknown')}")
-                            if source.get('chunk_text'):
-                                st.markdown(f"*Excerpt*: {source['chunk_text'][:300]}...")
+                        for i, source in enumerate(sources):
+                            st.markdown(f"**Source {i + 1}** (Score: {source.get('score', 'N/A'):.3f})")
+                            st.markdown(f"*Paper*: {source.get('chunk', {}).get('paper_id', 'Unknown')}")
+                            
+                            if source.get('chunk', {}).get('text'):
+                                with st.expander("📄 View Chunk Text", expanded=False):
+                                    st.markdown(f"*Excerpt*: {source.get('chunk', {}).get('text')}")
+
                             st.divider()
                 
                 assistant_message = answer
