@@ -1,18 +1,14 @@
-# 📚 ScholarRAG — Retrieval-Augmented Generation for Academic Research
+# 📚 ScholarRAG — Retrieval-Augmented Generation for Academic Papers
 
 > Ask questions across research papers. Get cited, grounded answers.  
-
----
-
-## Why This Exists
-
-LLMs hallucinate. Academic research demands precision. ScholarRAG bridges the gap by grounding every answer in retrieved source material — with inline citations traceable to the original paper, section, and page.
 
 ScholarRAG is designed to handle real challenges in academic RAG:
 - **Dense academic language** that defeats naive keyword search
 - **Long papers** that require smarter chunking than fixed token windows
 - **Multi-paper queries** that demand cross-document reasoning
 - **Evaluation** so you know when your retrieval actually works
+
+Supports OpenAI, Gemini, and Qwen (via vLLM).
 
 ---
 
@@ -50,10 +46,6 @@ Dense vector search alone misses exact terminology — critical in scientific li
 - **BM25 keyword search** via `rank_bm25` as a complementary sparse signal
 - **Reciprocal Rank Fusion (RRF)** to merge ranked lists without score normalization headaches
 
-**Embedding backends** — switch via `EMBED_BACKEND`:
-- **Local:** Qwen on vLLM — Qwen embedding models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
-- **Hosted:** `text-embedding-3-*` (OpenAI) or `gemini-embedding-*` (Google) for maximum retrieval quality
-
 ### 📄 Semantic Chunking for Research Papers
 Fixed-size chunking destroys paper structure. Instead:
 - Parse PDFs with `PyMuPDF` + `pdfplumber` to extract sections, abstracts, figure captions, and references separately
@@ -66,95 +58,33 @@ Short natural language queries fail against dense academic text. [HyDE (Hypothet
 ### 🏆 Cross-Encoder Reranking
 After initial retrieval (top-50), a reranker rescores chunk-query pairs for precision. Top-8 chunks form the context window.
 
-**Reranker backends** — switch via `RERANKER_BACKEND`:
-- **Local:** Qwen on vLLM — Qwen reranker models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
-- **Hosted:** Embeds text using Gemini and OpenAI embedding models, and then reranks text based on cosine similarity to input query
+### Multi-Model Support
 
-### 🖥️ Local LLM Support
-ScholarRAG runs fully offline. The LLM backend is provider-agnostic:
-- **Qwen on vLLM** — Qwen models hosted on vLLM server for production-grade local inference with PagedAttention for higher throughput
-- **Hosted fallback** — OpenAI / Gemini APIs still supported via the same interface
+Switch providers via the `MODEL_BACKEND` environment variable
+
+**Embedding backends**
+- **Qwen:** Qwen embedding models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
+- **Gemini:** `gemini-embedding-*` via Gemini API
+- **OpenAI:** `text-embedding-3-*` via OpenAI API
+
+**Reranker backends**
+- **Qwen:** Qwen reranker models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
+- **Gemini:** Embeds text using Gemini embedding API, and then reranks text based on cosine similarity to the input query
+- **OpenAI:** Embeds text using OpenAI embedding API, and then reranks text based on cosine similarity to the input query
+
+**Text generation backends**
+- **Qwen:** Qwen text generation models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
+- **Gemini:** Gemini text generation models (2.5, 3.0, etc) available via API
+- **OpenAI:** OpenAI text generation models (GPT-4o, GPT-4.1, GPT-5, etc) available via API
 
 Switch backends with a single env variable: `LLM_BACKEND=vllm||openai|gemini`
 
 ### 📊 Evaluation Built In
-RAG without eval is guesswork. ScholarRAG ships with:
+RAG without eval is guesswork. ScholarRAG ships with DeepEval to measure:
 - **Faithfulness** — does the answer contradict any retrieved chunk? (LLM-as-judge)
 - **Answer Recall** — does the answer cover the ground truth key points?
 - **MRR / Hit@k** — is the relevant chunk in the top-k retrieved?
 - **Context Precision** — are retrieved chunks actually relevant to the question?
-
-Eval harness uses [RAGAS](https://github.com/explodinggradients/ragas) + a curated test set of 50 paper-question-answer triples.
-
----
-
-## Supported Models
-
-### OpenAI Models
-
-#### OpenAI Embedding Models
-| Model | Dimensions | Description |
-|-------|------------|-------------|
-| `text-embedding-3-large` | 1024 (default) | Best quality, recommended for production |
-| `text-embedding-3-small` | 1024 | Faster, lower cost alternative |
-
-#### OpenAI Text Generation Models
-| Model       | Description                                                |
-| ----------- | ---------------------------------------------------------- |
-| GPT-5       | OpenAI’s flagship reasoning model for complex tasks.       |
-| GPT-4o      | General-purpose multimodal model for text and image input. |
-| GPT-4o mini | Smaller, lower-cost multimodal model.                      |
-| GPT-4.1     | Strong general text-generation model.                      |
-| o3          | Reasoning-focused model for harder prompts.                |
-
-### Gemini Models
-
-#### Gemini Embedding Models
-| Model | Dimensions | Description |
-|-------|------------|-------------|
-| `gemini-embedding-001` | 1536 (default) | First-gen Gemini embeddings |
-| `gemini-embedding-002` | 1536 | Improved Gemini embeddings |
-
-### Gemini Text Generation Models
-| Model                 | Description                                                                |
-| --------------------- | -------------------------------------------------------------------------- |
-| Gemini 2.5 Pro        | High-capability model for complex reasoning, coding, and multimodal tasks. |
-| Gemini 2.5 Flash      | Fast, balanced model for strong performance and lower latency.             |
-| Gemini 2.5 Flash-Lite | Cost-effective, high-throughput model optimized for efficiency.            |
-| Gemini 3.1 Pro        | Latest reasoning-first model for complex agentic workflows and coding.     |
-| Gemini 3.1 Flash      | Powerful agentic and coding model with strong multimodal understanding.    |
-| Gemini 3.1 Flash-Lite | Most cost-efficient option for low-latency, high-volume use cases.         |
-
-### Qwen Models (hosted on vLLM)
-ScholarRAG exclusively supports Qwen family models when running locally on vLLM. This ensures optimal compatibility and performance.
-
-**Embedding Models:**
-| Model | Dimensions | Description |
-|-------|------------|-------------|
-| `Qwen/Qwen3-Embedding-0.6B` | 1024 (default) | Lightweight, fast inference |
-| `Qwen/Qwen3-Embedding-4B` | 1024 | Balanced quality/speed |
-| `Qwen/Qwen3-Embedding-8B` | 1024 | Highest quality embedding |
-
-**Reranker Models:**
-| Model | Description |
-|-------|-------------|
-| `Qwen/Qwen3-Reranker-0.6B` | Lightweight, fast reranking (default) |
-| `Qwen/Qwen3-Reranker-4B` | Balanced quality/speed |
-| `Qwen/Qwen3-Reranker-8B` | Highest quality reranking |
-
-**LLM Models (Instruct variants for chat/completion):**
-| Model | Description |
-|-------|-------------|
-| `Qwen/Qwen2.5-7B-Instruct` | Entry-level Qwen2.5 |
-| `Qwen/Qwen2.5-14B-Instruct` | Mid-range Qwen2.5 |
-| `Qwen/Qwen2.5-32B-Instruct` | High-quality Qwen2.5 |
-| `Qwen/Qwen2.5-72B-Instruct` | Premium Qwen2.5 |
-| `Qwen/Qwen3-8B-Instruct` | Entry-level Qwen3 |
-| `Qwen/Qwen3-14B-Instruct` | Mid-range Qwen3 |
-| `Qwen/Qwen3-32B-Instruct` | High-quality Qwen3 |
-| `Qwen/Qwen3.5-9B` | Entry-level Qwen3.5 |
-| `Qwen/Qwen3.5-27B-FP8` | Quantized for efficiency |
-| `Qwen/Qwen3.5-397B-A17B-FP8` | Flagship model (default) |
 
 ---
 
