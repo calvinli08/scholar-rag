@@ -105,6 +105,13 @@ To run ScholarRAG with OpenAI or Gemini models, simply update the `.env` file wi
 2. Update `.env` values with your preferred Qwen models. You can find text generation, embedding, and reranker models on [HuggingFace](https://huggingface.co/Qwen).
 3. Start three distinct vLLM instances, one for each of the text generation, embedding, and reranker models. Ensure that each model has sufficient context length, GPU memory allocation, and its own HTTP port. You will need to change model sizes or GPUs if there is insufficient memory.
 
+### Database
+The `docker/init` directory contains two SQL scripts that create the necessary database schema. These will need to run when initializing the PostgreSQL instance.
+
+For local development and testing, use the `docker-compose.dev.yml` file. Simply run `docker compose -f docker-compose.dev.yml up` and a PostgreSQL container with the appropriate schema will spin up automatically.
+
+Update `DATABASE_URL` in `.env` to point to your PostgreSQL instance. 
+
 ---
 
 ## Design Decisions & Tradeoffs
