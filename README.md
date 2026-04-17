@@ -21,7 +21,7 @@ ScholarRAG is designed to handle real challenges in academic RAG:
 ```
 Ingestion Pipeline
 ┌──────────────────────────────────────────────────────────────┐
-│  PDF / arXiv → Parser → Semantic Chunker → Embeddings        │
+│  PDF → Parser → Semantic Chunker → Embeddings                │
 │                           └──────────────→ BM25 Index        │
 └──────────────────────────────────────────────────────────────┘
 
@@ -38,7 +38,7 @@ Generation
 └──────────────────────────────────────────────────────────────┘
 ```
 
-See [`docs/architecture.md`](docs/architecture.md) for component-level detail.
+See [`docs/architecture.html`](docs/architecture.html) for component-level detail.
 
 ---
 
@@ -52,7 +52,7 @@ Dense vector search alone misses exact terminology — critical in scientific li
 
 **Embedding backends** — switch via `EMBED_BACKEND`:
 - **Local:** Qwen on vLLM — Qwen embedding models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
-- **Hosted:** `text-embedding-3-large` (OpenAI) or `embed-english-v3.0` (Cohere) for maximum retrieval quality
+- **Hosted:** `text-embedding-3-*` (OpenAI) or `gemini-embedding-*` (Google) for maximum retrieval quality
 
 ### 📄 Semantic Chunking for Research Papers
 Fixed-size chunking destroys paper structure. Instead:
@@ -68,15 +68,14 @@ After initial retrieval (top-50), a reranker rescores chunk-query pairs for prec
 
 **Reranker backends** — switch via `RERANKER_BACKEND`:
 - **Local:** Qwen on vLLM — Qwen reranker models hosted on vLLM server, runs on GPU, OpenAI-compatible API, no API key needed
-- **Hosted:** Cohere Rerank API — best out-of-the-box quality, easy to swap in for production
+- **Hosted:** Embeds text using Gemini and OpenAI embedding models, and then reranks text based on cosine similarity to input query
 
 ### 🖥️ Local LLM Support
 ScholarRAG runs fully offline. The LLM backend is provider-agnostic:
-- **Ollama** — run `llama3`, `mistral`, `phi3`, or any GGUF model locally via a drop-in OpenAI-compatible endpoint
 - **Qwen on vLLM** — Qwen models hosted on vLLM server for production-grade local inference with PagedAttention for higher throughput
-- **Hosted fallback** — OpenAI / Cohere APIs still supported via the same interface
+- **Hosted fallback** — OpenAI / Gemini APIs still supported via the same interface
 
-Switch backends with a single env variable: `LLM_BACKEND=qwen|ollama|openai|cohere`
+Switch backends with a single env variable: `LLM_BACKEND=vllm||openai|gemini`
 
 ### 📊 Evaluation Built In
 RAG without eval is guesswork. ScholarRAG ships with:
@@ -91,17 +90,40 @@ Eval harness uses [RAGAS](https://github.com/explodinggradients/ragas) + a curat
 
 ## Supported Models
 
-### OpenAI Embedding Models
+### OpenAI Models
+
+#### OpenAI Embedding Models
 | Model | Dimensions | Description |
 |-------|------------|-------------|
 | `text-embedding-3-large` | 1024 (default) | Best quality, recommended for production |
 | `text-embedding-3-small` | 1024 | Faster, lower cost alternative |
 
-### Gemini Embedding Models
+#### OpenAI Text Generation Models
+| Model       | Description                                                |
+| ----------- | ---------------------------------------------------------- |
+| GPT-5       | OpenAI’s flagship reasoning model for complex tasks.       |
+| GPT-4o      | General-purpose multimodal model for text and image input. |
+| GPT-4o mini | Smaller, lower-cost multimodal model.                      |
+| GPT-4.1     | Strong general text-generation model.                      |
+| o3          | Reasoning-focused model for harder prompts.                |
+
+### Gemini Models
+
+#### Gemini Embedding Models
 | Model | Dimensions | Description |
 |-------|------------|-------------|
 | `gemini-embedding-001` | 1536 (default) | First-gen Gemini embeddings |
 | `gemini-embedding-002` | 1536 | Improved Gemini embeddings |
+
+### Gemini Text Generation Models
+| Model                 | Description                                                                |
+| --------------------- | -------------------------------------------------------------------------- |
+| Gemini 2.5 Pro        | High-capability model for complex reasoning, coding, and multimodal tasks. |
+| Gemini 2.5 Flash      | Fast, balanced model for strong performance and lower latency.             |
+| Gemini 2.5 Flash-Lite | Cost-effective, high-throughput model optimized for efficiency.            |
+| Gemini 3.1 Pro        | Latest reasoning-first model for complex agentic workflows and coding.     |
+| Gemini 3.1 Flash      | Powerful agentic and coding model with strong multimodal understanding.    |
+| Gemini 3.1 Flash-Lite | Most cost-efficient option for low-latency, high-volume use cases.         |
 
 ### Qwen Models (hosted on vLLM)
 ScholarRAG exclusively supports Qwen family models when running locally on vLLM. This ensures optimal compatibility and performance.
@@ -136,112 +158,17 @@ ScholarRAG exclusively supports Qwen family models when running locally on vLLM.
 
 ---
 
-## OpenAI & Gemini Quickstart
+## Quickstart
+
+### OpenAI & Gemini Quickstart
 
 To run ScholarRAG with OpenAI or Gemini models, simply update the `.env` file with your preferred embedding and text-generation models, along with your API key.
 
-## Qwen vLLM Quickstart
+### Qwen on vLLM Quickstart
 
-To run ScholarRAG fully locally with Qwen models on vLLM, follow these steps:
-
-### 1. Install vLLM
-
-```bash
-pip install vllm
-```
-
-### 2. Start vLLM Server
-
-Launch vLLM with your chosen Qwen models. You can serve multiple models simultaneously on different ports, or use a single server with model switching.
-
-**For embedding + reranking + LLM (recommended setup):**
-
-```bash
-# Terminal 1: LLM server (port 8000)
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen3.5-397B-A17B-FP8 \
-    --port 8000 \
-    --tensor-parallel-size 1 \
-    --gpu-memory-utilization 0.8
-
-# Terminal 2: Embedding server (port 8001)
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen3-Embedding-0.6B \
-    --port 8001 \
-    --task pooling \
-    --gpu-memory-utilization 0.8
-
-# Terminal 3: Reranker server (port 8002)
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen3-Reranker-0.6B \
-    --port 8002 \
-    --task scoring \
-    --gpu-memory-utilization 0.8
-```
-
-### 3. Configure Environment
-
-```bash
-export EMBED_BACKEND=qwen
-export QWEN_EMBED_MODEL=Qwen/Qwen3-Embedding-0.6B
-export QWEN_URL=http://localhost:8001
-
-export RERANKER_BACKEND=qwen
-export QWEN_RERANKER_MODEL=Qwen/Qwen3-Reranker-0.6B
-# Note: reranker uses same QWEN_URL base, appends /v1/rerank
-
-export LLM_BACKEND=qwen
-export QWEN_MODEL=Qwen/Qwen3.5-397B-A17B-FP8
-export QWEN_URL=http://localhost:8000
-```
-
-### 4. Verify Setup
-
-```bash
-# Test embedding endpoint
-curl http://localhost:8001/v1/embeddings \
-    -H "Content-Type: application/json" \
-    -d '{"model": "Qwen/Qwen3-Embedding-0.6B", "input": "test"}'
-
-# Test LLM endpoint
-curl http://localhost:8000/v1/chat/completions \
-    -H "Content-Type: application/json" \
-    -d '{"model": "Qwen/Qwen3.5-397B-A17B-FP8", "messages": [{"role": "user", "content": "Hello"}]}'
-```
-
-### Hardware Requirements
-
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| GPU Memory | 24 GB | 80 GB (A100/H100) |
-| For 397B MoE | 48 GB (FP8) | 80 GB+ |
-| For 7B models | 16 GB | 24 GB |
-
-**Note:** The FP8 quantized variants (e.g., `Qwen3.5-397B-A17B-FP8`) significantly reduce memory requirements and are recommended for production deployment.
-
-### Single-Server Alternative
-
-If you have limited GPU memory, you can run smaller models on a single vLLM instance:
-
-```bash
-python -m vllm.entrypoints.openai.api_server \
-    --model Qwen/Qwen2.5-7B-Instruct \
-    --port 8000 \
-    --gpu-memory-utilization 0.9
-```
-
-Then configure:
-```bash
-export LLM_BACKEND=qwen
-export QWEN_MODEL=Qwen/Qwen2.5-7B-Instruct
-export QWEN_URL=http://localhost:8000
-```
-
----
-
-## Quickstart
-
-TODO
+1. Install vLLM [instructions](https://docs.vllm.ai/en/stable/getting_started/installation/)
+2. Update `.env` values with your preferred Qwen models. You can find text generation, embedding, and reranker models on [HuggingFace](https://huggingface.co/Qwen).
+3. Start three distinct vLLM instances, one for each of the text generation, embedding, and reranker models. Ensure that each model has sufficient context length, GPU memory allocation, and its own HTTP port. You will need to change model sizes or GPUs if there is insufficient memory.
 
 ---
 
@@ -251,13 +178,10 @@ TODO
 Qwen embedding models hosted on vLLM server give you access to high-quality embedding models that run entirely offline with high throughput. For a project ingesting potentially sensitive research, keeping embeddings local removes a meaningful data exposure risk — and it eliminates per-token API costs during the ingestion phase entirely.
 
 **Why two reranker options (local vs hosted)?**
-Qwen reranker models hosted on vLLM server run on GPU with no API key, which is the right default for development and private use. Cohere Rerank is the upgrade path for production — best-in-class quality without the overhead of running your own inference.
+Qwen reranker models hosted on vLLM server run on GPU with no API key, which is the right default for development and private use. Hosted reranking is the upgrade path for production — best-in-class quality without the overhead of running your own inference.
 
 **Why support local LLMs at all?**  
 Two reasons: zero inference cost during development, no data leaving your machine (important for proprietary research).
 
 **Why HyDE over multi-query expansion?**  
 HyDE generates one high-quality hypothetical document. Multi-query generates N queries. For academic search, one good embedding outperforms averaging N noisy ones — at lower cost.
-
-**Why not ColBERT (late interaction)?**  
-ColBERT is genuinely better for this domain. Excluded from v1 due to infrastructure cost and index complexity. Tracked in `docs/future_work.md`.
