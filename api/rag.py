@@ -2,6 +2,8 @@ import os
 from typing import TypedDict, List, Dict, Any, Optional
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
+from deepeval.metrics import FaithfulnessMetric
+from deepeval.test_case import LLMTestCase
 
 from api.retriever import retrieve_chunks
 from ingestion.embedder import get_embedder
@@ -130,27 +132,20 @@ class RAGState(TypedDict):
 
 
 def build_rag_graph():
-    """Builds the LangGraph workflow for RAG with grounding evaluation."""
-    
-    # Initialize components using settings from config
     llm = get_llm_instance()
-    
-    # --- Nodes ---
-    
-    def hyde_node(state: RAGState) -> Dict:
-        """Generate a hypothetical document answer to improve retrieval."""
+
+    def hyde_node(state: RAGState) -> Dict[str, Any]:
         hyde_prompt = ChatPromptTemplate.from_messages([
             ("system", "You are an expert assistant. Write a hypothetical answer to the following question based on your internal knowledge. This will be used to retrieve relevant documents."),
             ("human", "{query}")
         ])
-        
+
         chain = hyde_prompt | llm
         response = chain.invoke({"query": state["query"]})
 
         return {"hyde_query": response.content}
 
-    async def retrieve_node(state: RAGState) -> Dict:
-        """Retrieve relevant chunks using the HyDE query."""
+    async def retrieve_node(state: RAGState) -> Dict[str, Any]:
         query_text = state.get("hyde_query") or state["query"]
 
         chunks = await retrieve_chunks(
@@ -161,34 +156,41 @@ def build_rag_graph():
 
         return {"chunks": chunks}
 
-    def generate_node(state: RAGState) -> Dict:
-        """Generate an answer based on retrieved chunks."""
+    def generation_agent(state: RAGState) -> Dict[str, Any]:
+        context = "\n\n".join(
+            [f"[Source {i+1}]: {c.text}" for i, c in enumerate(state["chunks"])]
+        )
 
-        context = "\n\n".join([f"[Source {i+1}]: {c.text}" for i, c in enumerate(state["chunks"])])
-        
-        retry_feedback = ""
-        if state["retry_count"] > 0:
-            retry_feedback = f"\n\nNOTE: Previous attempts contained hallucinations (Grounding Score: {state['grounding_score']:.2f}). Ensure your answer is STRICTLY derived from the provided sources. Do not invent information."
+        feedback = ""
+        if state.get("eval_feedback"):
+            feedback = f"\n\nSupervisor feedback from prior evaluation:\n{state['eval_feedback']}"
 
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"You are a helpful research assistant. Answer the user's question using ONLY the provided context. Cite your sources using [Source X] notation. If the context doesn't contain the answer, state that you don't know.{retry_feedback}"),
+            ("system",
+             "You are the Generation Agent in a multi-agent RAG system. "
+             "Answer the user's question using ONLY the provided context. "
+             "Cite sources using [Source X]. "
+             "If the answer is not supported by the context, say you do not know."
+             f"{feedback}"),
             ("human", "Context:\n{context}\n\nQuestion: {query}")
         ])
-        
+
         chain = prompt | llm
         response = chain.invoke({"context": context, "query": state["query"]})
-        
-        return {"generated_answer": response.content, "retry_count": state["retry_count"] + 1}
 
-    def evaluate_node(state: RAGState) -> Dict:
-        """Evaluate the generated answer for grounding/hallucination using DeepEval."""
+        return {
+            "generated_answer": response.content,
+            "retry_count": state["retry_count"] + 1
+        }
+
+    def deepeval_agent(state: RAGState) -> Dict[str, Any]:
         if not state["chunks"]:
-            return {"grounding_score": 0.0}
+            return {
+                "grounding_score": 0.0,
+                "eval_feedback": "No retrieval context was available, so the answer could not be grounded."
+            }
 
         context = "\n".join([c.text for c in state["chunks"]])
-
-        from deepeval.metrics import FaithfulnessMetric
-        from deepeval.test_case import LLMTestCase
 
         test_case = LLMTestCase(
             input=state["query"],
@@ -196,9 +198,8 @@ def build_rag_graph():
             retrieval_context=[context]
         )
 
-        # Use the configured evaluation LLM backend
         evaluation_llm = get_eval_llm_instance()
-        
+
         metric = FaithfulnessMetric(
             threshold=GROUNDING_THRESHOLD,
             model=evaluation_llm
@@ -208,43 +209,75 @@ def build_rag_graph():
             metric.measure(test_case)
             score = metric.score
         except Exception as e:
-            print(f"Evaluation error: {e}")
+            log.error("Evaluation error: %s", e)
             score = 0.0
 
-        return {"grounding_score": score}
+        feedback = (
+            f"Faithfulness score: {score:.2f}. "
+            f"{'The answer is sufficiently grounded in the retrieved context.' if score >= GROUNDING_THRESHOLD else 'The answer may contain unsupported claims. Revise to stay strictly within retrieved context.'}"
+        )
 
-    def should_retry(state: RAGState) -> str:
-        """Decide whether to retry generation or end."""
-        if state["grounding_score"] >= GROUNDING_THRESHOLD:
-            return "end"
+        return {
+            "grounding_score": score,
+            "eval_feedback": feedback
+        }
+
+    def supervisor_agent(state: RAGState) -> Dict[str, Any]:
         if state["retry_count"] >= MAX_RETRIES:
-            return "end"
-        return "generate"
+            return {
+                "supervisor_decision": "end",
+                "eval_feedback": (
+                    state["eval_feedback"]
+                    + " Maximum retries reached. Returning best available answer."
+                )
+            }
 
-    # --- Graph Construction ---
-    
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "You are the supervisor agent in a multi-agent RAG system."
+                "Before you were invoked, an evaluation agent assessed the RAG-generated answer for faithfulness and produced a numeric grounding score and feedback."
+                "Examine both the numeric faithfulness score and the feedback. Determine whether the score is high enough and whether the justification is strong enough to terminate the workflow, or whether to re-generate the answer."
+                "The numeric faithfulness score is a float number between 0 and 1, where a higher score indicates the answer is more faithful to the retrieved context. A score above 0.9 is generally considered good, but also consider the feedback justification provided by the evaluation agent."
+            ),
+            (
+                "human", 
+                "The numeric faithfulness score is: {grounding_score}. The evaluation agent feedback is: {eval_feedback}.",
+                "Based on the above, should the generation agent try to generate a new answer (type 'generate') or is the current answer good enough to return to the user (type 'end')?",
+                "Respond with only 'generate' or 'end'."
+            )
+        ])
+
+        chain = prompt | llm
+        response = chain.invoke({"grounding_score": state["grounding_score"], "eval_feedback": state["eval_feedback"]})
+
+        return {
+            "supervisor_decision": response.content.strip().lower()
+        }
+
+    def route_supervisor(state: RAGState) -> str:
+        return state["supervisor_decision"]
+
     workflow = StateGraph(RAGState)
-    
-    # Add nodes
+
     workflow.add_node("hyde", hyde_node)
     workflow.add_node("retrieve", retrieve_node)
-    workflow.add_node("generate", generate_node)
-    workflow.add_node("evaluate", evaluate_node)
-    
-    # Set entry point
+    workflow.add_node("generation_agent", generation_agent)
+    workflow.add_node("deepeval_agent", deepeval_agent)
+    workflow.add_node("supervisor_agent", supervisor_agent)
+
     workflow.set_entry_point("hyde")
-    
-    # Add edges
+
     workflow.add_edge("hyde", "retrieve")
-    workflow.add_edge("retrieve", "generate")
-    workflow.add_edge("generate", "evaluate")
-    
-    # Conditional edge for retry loop
+    workflow.add_edge("retrieve", "generation_agent")
+    workflow.add_edge("generation_agent", "deepeval_agent")
+    workflow.add_edge("deepeval_agent", "supervisor_agent")
+
     workflow.add_conditional_edges(
-        "evaluate",
-        should_retry,
+        "supervisor_agent",
+        route_supervisor,
         {
-            "generate": "generate",
+            "generate": "generation_agent",
             "end": END
         }
     )
