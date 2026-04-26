@@ -169,13 +169,18 @@ def build_rag_graph():
 
         prompt = ChatPromptTemplate.from_messages(
             [
-                ("system",
-                "You are the Generation Agent in a multi-agent RAG system. "
-                "Answer the user's question using ONLY the provided context. "
-                "Cite sources using [Source X]. "
-                "If the answer is not supported by the context, say you do not know."
-                f"{feedback}"),
-                ("human", "Context:\n{context}\n\nQuestion: {query}")
+                (
+                    "system",
+                    "You are the Generation Agent in a multi-agent RAG system. "
+                    "Answer the user's question using ONLY the provided context. "
+                    "Cite sources using [Source X]. "
+                    "If the answer is not supported by the context, say you do not know."
+                    f"{feedback}"
+                ),
+                (
+                    "human", 
+                    "Context:\n{context}\n\nQuestion: {query}"
+                )
             ],
             template_format="mustache"
         )
