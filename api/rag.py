@@ -125,6 +125,8 @@ class RAGState(TypedDict):
     chunks: List[Dict[str, Any]]
     generated_answer: str
     grounding_score: float
+    eval_feedback: str
+    supervisor_decision: str
     top_k: int
     use_reranker: bool
     retry_count: int
@@ -165,15 +167,18 @@ def build_rag_graph():
         if state.get("eval_feedback"):
             feedback = f"\n\nSupervisor feedback from prior evaluation:\n{state['eval_feedback']}"
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system",
-             "You are the Generation Agent in a multi-agent RAG system. "
-             "Answer the user's question using ONLY the provided context. "
-             "Cite sources using [Source X]. "
-             "If the answer is not supported by the context, say you do not know."
-             f"{feedback}"),
-            ("human", "Context:\n{context}\n\nQuestion: {query}")
-        ])
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system",
+                "You are the Generation Agent in a multi-agent RAG system. "
+                "Answer the user's question using ONLY the provided context. "
+                "Cite sources using [Source X]. "
+                "If the answer is not supported by the context, say you do not know."
+                f"{feedback}"),
+                ("human", "Context:\n{context}\n\nQuestion: {query}")
+            ],
+            template_format="mustache"
+        )
 
         chain = prompt | llm
         response = chain.invoke({"context": context, "query": state["query"]})
@@ -235,15 +240,15 @@ def build_rag_graph():
         prompt = ChatPromptTemplate.from_messages([
             (
                 "system",
-                "You are the supervisor agent in a multi-agent RAG system."
-                "Before you were invoked, an evaluation agent assessed the RAG-generated answer for faithfulness and produced a numeric grounding score and feedback."
-                "Examine both the numeric faithfulness score and the feedback. Determine whether the score is high enough and whether the justification is strong enough to terminate the workflow, or whether to re-generate the answer."
+                "You are the supervisor agent in a multi-agent RAG system. "
+                "Before you were invoked, an evaluation agent assessed the RAG-generated answer for faithfulness and produced a numeric grounding score and feedback. "
+                "Examine both the numeric faithfulness score and the feedback. Determine whether the score is high enough and whether the justification is strong enough to terminate the workflow, or whether to re-generate the answer. "
                 "The numeric faithfulness score is a float number between 0 and 1, where a higher score indicates the answer is more faithful to the retrieved context. A score above 0.9 is generally considered good, but also consider the feedback justification provided by the evaluation agent."
             ),
             (
                 "human", 
-                "The numeric faithfulness score is: {grounding_score}. The evaluation agent feedback is: {eval_feedback}.",
-                "Based on the above, should the generation agent try to generate a new answer (type 'generate') or is the current answer good enough to return to the user (type 'end')?",
+                "The numeric faithfulness score is: {grounding_score}. The evaluation agent feedback is: {eval_feedback}. "
+                "Based on the above, should the generation agent try to generate a new answer (type 'generate') or is the current answer good enough to return to the user (type 'end')? "
                 "Respond with only 'generate' or 'end'."
             )
         ])
