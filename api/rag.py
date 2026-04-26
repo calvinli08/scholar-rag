@@ -217,15 +217,13 @@ def build_rag_graph():
 
         try:
             metric.measure(test_case)
+
             score = metric.score
+            feedback = metric.reason[:1000]  # Limit feedback length for prompt
         except Exception as e:
             log.error("Evaluation error: %s", e)
             score = 0.0
-
-        feedback = (
-            f"Faithfulness score: {score:.2f}. "
-            f"{'The answer is sufficiently grounded in the retrieved context.' if score >= GROUNDING_THRESHOLD else 'The answer may contain unsupported claims. Revise to stay strictly within retrieved context.'}"
-        )
+            feedback = "Evaluation failed with error"
 
         return {
             "grounding_score": score,
