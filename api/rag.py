@@ -33,29 +33,13 @@ def get_llm_instance():
         callbacks.append(APICallLogger(backend=backend.value))
 
     if backend == ModelBackend.OPENAI:
-    """Initialize the LLM based on settings.model_backend."""
-    backend = settings.model_backend
-
-    # Create callback handler for hosted backends
-    callbacks = []
-    if _is_hosted_backend(backend.value):
-        callbacks.append(APICallLogger(backend=backend.value))
-
-    if backend == ModelBackend.OPENAI:
         from langchain_openai import ChatOpenAI
         return ChatOpenAI(
             model=settings.openai_model,
             temperature=settings.llm_temperature,
             api_key=settings.openai_api_key,
             callbacks=callbacks,
-            api_key=settings.openai_api_key,
-            callbacks=callbacks,
         )
-    elif backend == ModelBackend.QWEN:
-        # Qwen models hosted on vLLM server - uses OpenAI-compatible API
-        from langchain_openai import ChatOpenAI
-        return ChatOpenAI(
-            model=settings.qwen_model,
     elif backend == ModelBackend.QWEN:
         # Qwen models hosted on vLLM server - uses OpenAI-compatible API
         from langchain_openai import ChatOpenAI
@@ -64,28 +48,18 @@ def get_llm_instance():
             temperature=settings.llm_temperature,
             base_url=settings.qwen_url,
             api_key="vllm",
-            callbacks=callbacks,
-            base_url=settings.qwen_url,
-            api_key="vllm",
-            callbacks=callbacks,
+            callbacks=callbacks
         )
-    elif backend == ModelBackend.GEMINI:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(
-            model=settings.gemini_model,
     elif backend == ModelBackend.GEMINI:
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
             model=settings.gemini_model,
             temperature=settings.llm_temperature,
             api_key=settings.gemini_api_key,
-            callbacks=callbacks,
-            api_key=settings.gemini_api_key,
-            callbacks=callbacks,
+            callbacks=callbacks
         )
     else:
         raise ValueError(f"Unsupported LLM backend: {backend}")
-
 
 def get_eval_llm_instance():
     """Initialize the LLM for evaluation based on settings.model_backend using DeepEval native models.
@@ -241,7 +215,6 @@ def build_rag_graph():
         chain = hyde_prompt | llm
         response = chain.invoke({"query": state["query"]})
 
-
         return {"hyde_query": response.content}
 
     async def retrieve_node(state: RAGState) -> Dict[str, Any]:
@@ -252,7 +225,6 @@ def build_rag_graph():
             top_k=state["top_k"],
             use_reranker=state["use_reranker"]
         )
-
 
         chunks = await retrieve_chunks(
             query_text,
@@ -396,23 +368,15 @@ def build_rag_graph():
     
     return workflow.compile()
 
-
 # Create the compiled graph instance
 rag_graph = build_rag_graph()
 
-
-async def run_rag_workflow(
-    query: str,
-    top_k: int = 5,
-    use_reranker: bool = True
-) -> Dict[str, Any]:
 async def run_rag_workflow(
     query: str,
     top_k: int = 5,
     use_reranker: bool = True
 ) -> Dict[str, Any]:
     """Execute the RAG workflow for a given query."""
-    initial_state = RAGState({
     initial_state = RAGState({
         "query": query,
         "hyde_query": "",
@@ -427,11 +391,9 @@ async def run_rag_workflow(
         "error": None
     })
 
-    })
-
     try:
         final_state = await rag_graph.ainvoke(initial_state)
-        final_state = await rag_graph.ainvoke(initial_state)
+
         return {
             "answer": final_state["generated_answer"],
             "sources": final_state["chunks"],
@@ -439,11 +401,6 @@ async def run_rag_workflow(
             "retries": final_state["retry_count"] - 1 if final_state["retry_count"] > 0 else 0
         }
     except Exception as e:
-        import traceback
-
-        log.error("Query failed: %s\n%s", e, traceback.format_exc())
-
-        raise e
         import traceback
 
         log.error("Query failed: %s\n%s", e, traceback.format_exc())
