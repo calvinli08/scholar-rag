@@ -14,9 +14,25 @@ from logger import get_logger, configure_logging
 configure_logging()
 
 log = get_logger(__name__)
+from api.api_logger import APICallLogger, _is_hosted_backend
+from config import settings, ModelBackend
+from logger import get_logger, configure_logging
+
+configure_logging()
+
+log = get_logger(__name__)
 
 
 def get_llm_instance():
+    """Initialize the LLM based on settings.model_backend."""
+    backend = settings.model_backend
+
+    # Create callback handler for hosted backends
+    callbacks = []
+    if _is_hosted_backend(backend.value):
+        callbacks.append(APICallLogger(backend=backend.value))
+
+    if backend == ModelBackend.OPENAI:
     """Initialize the LLM based on settings.model_backend."""
     backend = settings.model_backend
 
@@ -32,7 +48,14 @@ def get_llm_instance():
             temperature=settings.llm_temperature,
             api_key=settings.openai_api_key,
             callbacks=callbacks,
+            api_key=settings.openai_api_key,
+            callbacks=callbacks,
         )
+    elif backend == ModelBackend.QWEN:
+        # Qwen models hosted on vLLM server - uses OpenAI-compatible API
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(
+            model=settings.qwen_model,
     elif backend == ModelBackend.QWEN:
         # Qwen models hosted on vLLM server - uses OpenAI-compatible API
         from langchain_openai import ChatOpenAI
@@ -42,7 +65,14 @@ def get_llm_instance():
             base_url=settings.qwen_url,
             api_key="vllm",
             callbacks=callbacks,
+            base_url=settings.qwen_url,
+            api_key="vllm",
+            callbacks=callbacks,
         )
+    elif backend == ModelBackend.GEMINI:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        return ChatGoogleGenerativeAI(
+            model=settings.gemini_model,
     elif backend == ModelBackend.GEMINI:
         from langchain_google_genai import ChatGoogleGenerativeAI
         return ChatGoogleGenerativeAI(
@@ -50,9 +80,75 @@ def get_llm_instance():
             temperature=settings.llm_temperature,
             api_key=settings.gemini_api_key,
             callbacks=callbacks,
+            api_key=settings.gemini_api_key,
+            callbacks=callbacks,
         )
     else:
         raise ValueError(f"Unsupported LLM backend: {backend}")
+
+
+def get_eval_llm_instance():
+    """Initialize the LLM for evaluation based on settings.model_backend using DeepEval native models.
+    
+    Uses the same configured LLM as the main RAG pipeline (no separate eval model settings).
+    """
+    backend = settings.model_backend
+
+    if backend == ModelBackend.OPENAI:
+        from deepeval.models import GPTModel
+        return GPTModel(
+            model=settings.openai_model,
+            api_key=settings.openai_api_key
+        )
+    elif backend == ModelBackend.QWEN:
+        # Qwen models hosted on vLLM server - uses OpenAI-compatible API for DeepEval
+        from deepeval.models import DeepEvalBaseLLM
+
+        class QWENWrapper(DeepEvalBaseLLM):
+            def __init__(self, model: str, base_url: str) -> None:
+                self._model = model
+                self._base_url = base_url
+
+            def load_model(self):
+                from langchain_openai import ChatOpenAI
+                return ChatOpenAI(
+                    model=self._model,
+                    base_url=self._base_url,
+                    api_key="vllm",
+                )
+
+            def generate(self, prompt: str) -> str:
+                chat_model = self.load_model()
+                from langchain_core.messages import HumanMessage
+                response = chat_model.invoke([HumanMessage(content=prompt)])
+                return response.content
+
+            async def a_generate(self, prompt: str) -> str:
+                chat_model = self.load_model()
+                from langchain_core.messages import HumanMessage
+                response = await chat_model.ainvoke([HumanMessage(content=prompt)])
+                return response.content
+
+            def get_model_name(self) -> str:
+                return self._model
+
+        return QWENWrapper(
+            model=settings.qwen_model,
+            base_url=settings.qwen_url
+        )
+    elif backend == ModelBackend.GEMINI:
+        from deepeval.models import GeminiModel
+        return GeminiModel(
+            model=settings.gemini_model,
+            api_key=settings.gemini_api_key
+        )
+    else:
+        raise ValueError(f"Unsupported evaluation backend: {backend}")
+
+
+# Configuration
+GROUNDING_THRESHOLD = 0.9
+MAX_RETRIES = 2
 
 
 def get_eval_llm_instance():
@@ -145,10 +241,18 @@ def build_rag_graph():
         chain = hyde_prompt | llm
         response = chain.invoke({"query": state["query"]})
 
+
         return {"hyde_query": response.content}
 
     async def retrieve_node(state: RAGState) -> Dict[str, Any]:
         query_text = state.get("hyde_query") or state["query"]
+
+        chunks = await retrieve_chunks(
+            query_text,
+            top_k=state["top_k"],
+            use_reranker=state["use_reranker"]
+        )
+
 
         chunks = await retrieve_chunks(
             query_text,
@@ -302,11 +406,19 @@ async def run_rag_workflow(
     top_k: int = 5,
     use_reranker: bool = True
 ) -> Dict[str, Any]:
+async def run_rag_workflow(
+    query: str,
+    top_k: int = 5,
+    use_reranker: bool = True
+) -> Dict[str, Any]:
     """Execute the RAG workflow for a given query."""
+    initial_state = RAGState({
     initial_state = RAGState({
         "query": query,
         "hyde_query": "",
         "chunks": [],
+        "top_k": top_k,
+        "use_reranker": use_reranker,
         "top_k": top_k,
         "use_reranker": use_reranker,
         "generated_answer": "",
@@ -315,7 +427,10 @@ async def run_rag_workflow(
         "error": None
     })
 
+    })
+
     try:
+        final_state = await rag_graph.ainvoke(initial_state)
         final_state = await rag_graph.ainvoke(initial_state)
         return {
             "answer": final_state["generated_answer"],
@@ -324,6 +439,11 @@ async def run_rag_workflow(
             "retries": final_state["retry_count"] - 1 if final_state["retry_count"] > 0 else 0
         }
     except Exception as e:
+        import traceback
+
+        log.error("Query failed: %s\n%s", e, traceback.format_exc())
+
+        raise e
         import traceback
 
         log.error("Query failed: %s\n%s", e, traceback.format_exc())
