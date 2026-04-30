@@ -2,6 +2,7 @@ import os
 from typing import TypedDict, List, Dict, Any, Optional
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
+from langfuse.langchain import CallbackHandler
 from deepeval.metrics import FaithfulnessMetric
 from deepeval.test_case import LLMTestCase
 
@@ -17,6 +18,7 @@ log = get_logger(__name__)
 from api.api_logger import APICallLogger, _is_hosted_backend
 from config import settings, ModelBackend
 from logger import get_logger, configure_logging
+from langfuse import Langfuse, get_client
 
 configure_logging()
 
@@ -255,7 +257,7 @@ def build_rag_graph():
                 ),
                 (
                     "human", 
-                    "Context:\n{context}\n\nQuestion: {query}"
+                    "Context:\n{{context}}\n\nQuestion: {{query}}"
                 )
             ],
             template_format="mustache"
@@ -392,7 +394,24 @@ async def run_rag_workflow(
     })
 
     try:
-        final_state = await rag_graph.ainvoke(initial_state)
+        langfuse = Langfuse(
+            public_key=settings.langfuse_public_key,
+            secret_key=settings.langfuse_private_key,
+            base_url=settings.langfuse_base_url
+        )
+
+        if langfuse.auth_check():
+            print("Langfuse client is authenticated and ready!")
+        else:
+            raise Exception("LangFuse authentication failed. Please check your credentials and host.")
+        
+        # Initialize Langfuse CallbackHandler for Langchain (tracing)
+        langfuse_handler = CallbackHandler()
+
+        final_state = await rag_graph.ainvoke(
+            initial_state,
+            config={"callbacks": [langfuse_handler]}
+        )
 
         return {
             "answer": final_state["generated_answer"],

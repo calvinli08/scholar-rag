@@ -118,6 +118,11 @@ class Settings(BaseSettings):
     eval_test_set_path: str = "eval/test_set.json"
     eval_output_path: str = "eval/results.json"
 
+    # LangFuse
+    langfuse_private_key: str = ""
+    langfuse_public_key: str = ""
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+
     # ---------------------------------------------------------------------------
     # Validation
     # ---------------------------------------------------------------------------
