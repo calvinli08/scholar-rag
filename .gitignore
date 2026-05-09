@@ -70,6 +70,7 @@ Thumbs.db
 *.log
 
 uploads/*
+downloads/*
 
 # Compressed
 *.zip
@@ -96,3 +97,5 @@ uploads/*
 *.tar.zst
 
 .qwen/
+
+minio.license

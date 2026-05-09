@@ -60,7 +60,7 @@ Short natural language queries fail against dense academic text. [HyDE (Hypothet
 ### 🏆 Cross-Encoder Reranking
 After initial retrieval (top-50), a reranker rescores chunk-query pairs for precision. Top-8 chunks form the context window.
 
-### Multi-Model Support
+### 🧠 Multi-Model Support
 
 Switch providers via the `MODEL_BACKEND` environment variable
 
@@ -111,6 +111,28 @@ The `docker/init` directory contains two SQL scripts that create the necessary d
 For local development and testing, use the `docker-compose.dev.yml` file. Simply run `docker compose -f docker-compose.dev.yml up` and a PostgreSQL container with the appropriate schema will spin up automatically.
 
 Update `DATABASE_URL` in `.env` to point to your PostgreSQL instance. 
+
+### File Storage
+There are two supported file storage backends, MinIO and Amazon S3. 
+
+To use MinIO, set `FILE_UPLOAD_PROVIDER=local`. To use S3, set `FILE_UPLOAD_PROVIDER=s3`.
+
+The credentials for both are controlled by the same `.env` variables:
+
+```
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=scholar-rag
+S3_REGION=us-east-1
+```
+
+Where `S3_ACCESS_KEY` is the MinIO user, and `S3_SECRET_KEY` is the MinIO password.
+
+Update `S3_ENDPOINT` to either the MinIO endpoint or the S3 endpoint depending on which provider is chosen.
+
+If MinIO is the chosen provider, a license file named `minio.license` located in the top-level root directory of `scholar-rag` will need to be provided.
+
+A free MinIO license for development can be procured [here](https://www.min.io/pricing).
 
 ---
 

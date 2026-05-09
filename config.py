@@ -23,6 +23,12 @@ class ModelBackend(str, Enum):
     GEMINI = "gemini"      # Google Gemini API (hosted)
 
 
+class FileUploadProvider(str, Enum):
+    """Supported file upload backends."""
+    LOCAL = "local"        # Local filesystem
+    S3 = "s3"              # S3-compatible storage (AWS or Minio)
+
+
 # ---------------------------------------------------------------------------
 # Settings
 # ---------------------------------------------------------------------------
@@ -106,8 +112,15 @@ class Settings(BaseSettings):
     log_level: str = "info"
     debug: bool = True
 
-    # -- Ingestion --
-    upload_dir: str = "./uploads"
+    # -- Storage --
+    file_upload_provider: FileUploadProvider = FileUploadProvider.LOCAL
+    s3_endpoint: str = "http://storage:9000"
+    s3_access_key: str = "minioadmin"
+    s3_secret_key: str = "minioadmin"
+    s3_bucket: str = "scholar-rag"
+    s3_region: str = "us-east-1"
+
+    download_dir: str = "downloads"
 
     # -- Agentic RAG & Evaluation --
     use_hyde: bool = True
@@ -117,6 +130,15 @@ class Settings(BaseSettings):
     # -- Eval --
     eval_test_set_path: str = "eval/test_set.json"
     eval_output_path: str = "eval/results.json"
+
+    # LangFuse
+    langfuse_private_key: str = ""
+    langfuse_public_key: str = ""
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+
+    # Celery
+    celery_broker_url: str = "redis://redis:6379/0"
+    celery_result_backend: str = "redis://redis:6379/0"
 
     # ---------------------------------------------------------------------------
     # Validation
