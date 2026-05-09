@@ -1,12 +1,8 @@
 """
-Ingestion pipeline for ScholarRAG.
+Celery tasks for ScholarRAG ingestion pipeline.
 
-Orchestrates the full ingestion flow: parse → chunk → embed → index.
-This is the single entry point for ingesting papers via the FastAPI backend.
-
-Usage:
-    from ingestion.pipeline import ingest
-    paper_id = ingest("path/to/paper.pdf")
+This module defines the core ingestion logic as a Celery task, allowing
+it to be processed asynchronously by Celery workers.
 """
 
 from __future__ import annotations
@@ -15,63 +11,70 @@ from pathlib import Path
 import traceback
 from typing import Optional
 
-from logger import get_logger, configure_logging
+from celery_app import celery_app
+from logger import get_logger
 from data_models.models import Chunk
 
-configure_logging()
+# Import the actual ingestion pipeline components
+from ingestion.pdf_parser import PDFParser
+from ingestion.chunker import Chunker
+from ingestion.embedder import get_embedder
+from ingestion.indexer import Indexer
 
 log = get_logger(__name__)
 
 
-def ingest(file_path: str | Path, paper_id: Optional[str] = None) -> str:
+@celery_app.task(bind=True, name="ingestion.ingest_paper_task")
+def ingest_paper_task(self, file_path: str, paper_id: Optional[str] = None) -> dict:
     """
-    Ingest a single PDF paper into the retrieval index.
-    
+    Celery task to ingest a single PDF paper into the retrieval index.
+
     This function orchestrates the complete ingestion pipeline:
     1. Parse the PDF to extract structured content
     2. Chunk the content into semantically coherent segments
     3. Embed each chunk using the configured embedding backend
     4. Index chunks into pgvector and BM25
-    
+
     Args:
         file_path: Path to the PDF file to ingest
-        paper_id: Optional paper identifier. If not provided, 
+        paper_id: Optional paper identifier. If not provided,
                   uses the filename stem.
-    
+
     Returns:
         The paper_id of the ingested paper.
-    
+
     Raises:
         FileNotFoundError: If the PDF file doesn't exist
         Exception: Any error during parsing, chunking, embedding, or indexing
     """
     try:
-        from ingestion.pdf_parser import PDFParser
-        from ingestion.chunker import Chunker
-        from ingestion.embedder import get_embedder
-        from ingestion.indexer import Indexer
-        
-        file_path = Path(file_path)
-        if not file_path.exists():
-            raise FileNotFoundError(f"PDF not found: {file_path}")
-        
+        file_path_obj = Path(file_path)
+        if not file_path_obj.exists():
+            raise FileNotFoundError(f"PDF not found: {file_path_obj}")
+
         # Use filename stem as paper_id if not provided
-        paper_id = paper_id or file_path.stem
-        
-        log.info("Starting ingestion pipeline for %s (id=%s)", file_path.name, paper_id)
-        
+        paper_id = paper_id or file_path_obj.stem
+
+        # Store arguments in task metadata so they are accessible via AsyncResult.info
+        self.update_state(
+            state='STARTED',
+            meta={'file_path': file_path, 'paper_id': paper_id}
+        )
+
+        log.info("Starting ingestion pipeline for %s (id=%s)", file_path_obj.name, paper_id)
+
         # Step 1: Parse PDF
         log.debug("Parsing PDF...")
         parser = PDFParser()
-        doc = parser.parse(file_path, paper_id=paper_id)
+        doc = parser.parse(file_path_obj, paper_id=paper_id)
         log.debug("Parsed %d sections from %s", len(doc.sections), paper_id)
-        
+
         # Step 2: Chunk document
         log.debug("Chunking document...")
         chunker = Chunker()
         chunks: list[Chunk] = chunker.chunk_document(doc)
         log.debug("Created %d chunks from %s", len(chunks), paper_id)
-        
+
         # Step 3: Embed chunks
         log.debug("Embedding chunks...")
         embedder = get_embedder()
@@ -90,13 +93,16 @@ def ingest(file_path: str | Path, paper_id: Optional[str] = None) -> str:
             log.debug("Successfully indexed %d chunks for %s", len(chunks), paper_id)
 
             # Save paper record to the papers table
-            indexer.save_paper_record(doc, str(file_path), len(chunks))
+            indexer.save_paper_record(doc, str(file_path_obj), len(chunks))
             log.info("Successfully indexed %d chunks and saved paper record for %s", len(chunks), paper_id)
 
-        log.info("Ingestion complete for %s (id=%s)", file_path.name, paper_id)
+        log.info("Ingestion complete for %s (id=%s)", file_path_obj.name, paper_id)
 
-        return paper_id
+        return {
+            "paper_id": paper_id,
+            "file_path": file_path
+        }
     except Exception as e:
-        log.error("Ingestion failed for %s (id=%s): %s", file_path.name, paper_id, traceback.format_exc())
-
-        raise e
+        log.error("Ingestion failed for %s (id=%s): %s", file_path, paper_id, traceback.format_exc())
+        
+        raise
