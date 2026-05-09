@@ -15,6 +15,9 @@ from celery_app import celery_app
 from logger import get_logger
 from data_models.models import Chunk
 
+from s3_client import s3_client
+from config import settings
+
 # Import the actual ingestion pipeline components
 from ingestion.pdf_parser import PDFParser
 from ingestion.chunker import Chunker
@@ -25,7 +28,7 @@ log = get_logger(__name__)
 
 
 @celery_app.task(bind=True, name="ingestion.ingest_paper_task")
-def ingest_paper_task(self, file_path: str, paper_id: Optional[str] = None) -> dict:
+def ingest_paper_task(self, file_path: str, paper_id: str) -> dict:
     """
     Celery task to ingest a single PDF paper into the retrieval index.
 
@@ -37,8 +40,7 @@ def ingest_paper_task(self, file_path: str, paper_id: Optional[str] = None) -> d
 
     Args:
         file_path: Path to the PDF file to ingest
-        paper_id: Optional paper identifier. If not provided,
-                  uses the filename stem.
+        paper_id: Paper identifier.
 
     Returns:
         The paper_id of the ingested paper.
@@ -48,12 +50,18 @@ def ingest_paper_task(self, file_path: str, paper_id: Optional[str] = None) -> d
         Exception: Any error during parsing, chunking, embedding, or indexing
     """
     try:
-        file_path_obj = Path(file_path)
+        download_dir_path = Path(settings.download_dir)
+        download_dir_path.mkdir(exist_ok=True)
+
+        local_filepath = f"{settings.download_dir}/{file_path}.pdf"
+
+        s3_client.download_file(settings.s3_bucket, file_path, local_filepath)
+
+        file_path_obj = Path(local_filepath)
         if not file_path_obj.exists():
             raise FileNotFoundError(f"PDF not found: {file_path_obj}")
 
-        # Use filename stem as paper_id if not provided
-        paper_id = paper_id or file_path_obj.stem
+        log.info("Downloaded %s from storage bucket", file_path)
 
         # Store arguments in task metadata so they are accessible via AsyncResult.info
         self.update_state(
@@ -97,6 +105,8 @@ def ingest_paper_task(self, file_path: str, paper_id: Optional[str] = None) -> d
             log.info("Successfully indexed %d chunks and saved paper record for %s", len(chunks), paper_id)
 
         log.info("Ingestion complete for %s (id=%s)", file_path_obj.name, paper_id)
+
+        file_path_obj.unlink(missing_ok=True)
 
         return {
             "paper_id": paper_id,
