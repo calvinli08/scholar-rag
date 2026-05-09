@@ -45,6 +45,20 @@ services:
     volumes:
       - redis_data:/data
 
+  storage:
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z.hotfix.7aa24e772
+    container_name: scholarrag-storage
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    command: minio server /mnt/data --console-address ":9001"
+    volumes:
+      - minio_data:/mnt/data
+      - ./minio.license:/minio.license # Mount license file
+
   celery_worker:
     build: 
       context: ./
@@ -52,9 +66,7 @@ services:
     depends_on:
       - redis
       - db
-    environment:
-      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
-      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+      - storage
     volumes:
       - .:/home/app
     command: sh -c "uv sync && exec uv run celery -A celery_app worker -Q ingestion --loglevel=info"
@@ -63,4 +75,6 @@ volumes:
   pgdata:
     driver: local
   redis_data:
+    driver: local
+  minio_data:
     driver: local
