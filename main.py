@@ -5,7 +5,6 @@ Provides FastAPI endpoints for semantic search and Q&A.
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from pydantic import BaseModel, Field
-import os
 import uuid
 from pathlib import Path
 from celery.result import AsyncResult
@@ -13,6 +12,7 @@ from celery_app import celery_app
 from ingestion.tasks import ingest_paper_task
 from api.retriever import retrieve_chunks
 from api.rag import run_rag_workflow
+from config import settings
 from logger import get_logger, configure_logging
 from data_models.models import QueryResult, RetrievedChunk
 from db import get_pool
@@ -20,13 +20,6 @@ from db import get_pool
 configure_logging()
 
 log = get_logger(__name__)
-
-# Directory for uploaded files
-UPLOAD_DIR = Path(os.getenv("UPLOAD_DIR", "./uploads"))
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-# Track ingestion jobs
-ingestion_jobs: dict[str, dict] = {}
 
 app = FastAPI(
     title="ScholarRAG API",
@@ -116,7 +109,7 @@ async def health_check():
 
 
 @app.post("/ingest/upload")
-async def upload_paper(file: UploadFile = File(...)):
+def upload_paper(file: UploadFile = File(...)):
     """
     Upload a PDF paper for ingestion.
     Returns a job ID to track ingestion progress.
@@ -126,27 +119,44 @@ async def upload_paper(file: UploadFile = File(...)):
     
     task_id = str(uuid.uuid4())
     
-    # Save uploaded file
-    file_path = UPLOAD_DIR / f"{task_id}_{file.filename}"
     try:
-        content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
-        
+        content = file.file.read()
+
+        from s3_client import s3_client
+        from botocore.exceptions import ClientError
+
+        try:
+            s3_client.head_bucket(Bucket=settings.s3_bucket)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                s3_client.create_bucket(Bucket=settings.s3_bucket)
+            else:
+                raise
+
+        filename = f"{task_id}_{file.filename}"
+
+        s3_client.put_object(
+            Bucket=settings.s3_bucket,
+            Key=filename,
+            Body=content,
+            ContentType="application/pdf",
+        )
+
+        log.info("Uploaded %s to %s storage", file.filename, settings.s3_bucket)
+
         result = ingest_paper_task.apply_async(
-            kwargs={"file_path": str(file_path), "paper_id": task_id}, 
+            kwargs={"file_path": filename, "paper_id": task_id}, 
             task_id=task_id,
             queue="ingestion"
         )
         
         return {"job_id": task_id, "status": result.status.lower()}
     except Exception as e:
-        log.error("Upload failed: %s", e)
+        import traceback
 
-        if file_path.exists():
-            file_path.unlink()
+        log.error("Upload failed: %s\n%s", e, traceback.format_exc())
 
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to upload file")
 
 
 @app.get("/api/papers")
@@ -221,30 +231,30 @@ async def get_all_ingestion_status():
 
         for worker, tasks in active.items():
             for t in tasks:
-                if t['name'] == "ingestion.ingest_paper_task":
+                if t.get('name') == "ingestion.ingest_paper_task":
                     jobs.append({
                         "id": t['id'], 
-                        "filename": t["kwargs"]["file_path"].replace(str(UPLOAD_DIR) + f"/{t['id']}_", ""),
+                        "filename": t["kwargs"]["file_path"].replace(f"{t['id']}_", ""),
                         "status": "PROCESSING", 
                         "eta": None
                     })
 
         for worker, tasks in scheduled.items():
             for t in tasks:
-                if t['name'] == "ingestion.ingest_paper_task":
+                if t.get('name') == "ingestion.ingest_paper_task":
                     jobs.append({
                         "id": t['id'], 
-                        "filename": t["kwargs"]["file_path"].replace(str(UPLOAD_DIR) + f"/{t['id']}_", ""),
+                        "filename": t["kwargs"]["file_path"].replace(f"{t['id']}_", ""),
                         "status": "SCHEDULED", 
                         "eta": t.get('eta')
                     })
 
         for worker, tasks in reserved.items():
             for t in tasks:
-                if t['name'] == "ingestion.ingest_paper_task":
+                if t.get('name') == "ingestion.ingest_paper_task":
                     jobs.append({
                         "id": t['id'],
-                        "filename": t["kwargs"]["file_path"].replace(str(UPLOAD_DIR) + f"/{t['id']}_", ""),
+                        "filename": t["kwargs"]["file_path"].replace(f"{t['id']}_", ""),
                         "status": "PENDING",
                         "eta": None
                     })
@@ -267,19 +277,22 @@ async def get_ingestion_status(job_id: str):
     try:
         result = AsyncResult(job_id, app=celery_app)
         
-        task_args = {}
+        file_name = "Unknown"
         if isinstance(result.info, dict):
             file_name = result.info.get("file_path", "Unknown")
         
-        if not task_args.get("file_path"):
+        if file_name == "Unknown":
             inspector = celery_app.control.inspect()
-
-            query = inspector.query_task(job_id)
-
-            if query:
-                for worker_tasks in query.values():
-                    if job_id in worker_tasks:
-                        file_name = worker_tasks[job_id][2].get("file_path", "Unknown")
+            if inspector:
+                query = inspector.query_task(job_id)
+                if query:
+                    for worker_tasks in query.values():
+                        if job_id in worker_tasks:
+                            task_info = worker_tasks[job_id]
+                            if len(task_info) > 2 and isinstance(task_info[2], dict):
+                                file_name = task_info[2].get("file_path", "Unknown")
+        
+        file_name = file_name.replace(f"{job_id}_", "")
         
         return {
             "job_id": job_id,
