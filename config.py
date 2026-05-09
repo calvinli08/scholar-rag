@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_base_url: str = "https://cloud.langfuse.com"
 
+    # Celery
+    celery_broker_url: str = "redis://redis:6379/0"
+    celery_result_backend: str = "redis://redis:6379/0"
+
     # ---------------------------------------------------------------------------
     # Validation
     # ---------------------------------------------------------------------------
