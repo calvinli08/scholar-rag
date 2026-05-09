@@ -197,8 +197,11 @@ async def list_papers():
         
         return {"papers": papers}
     except Exception as e:
-        log.error("Failed to list papers: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+
+        log.error("Failed to list papers: %s\n%s", e, traceback.format_exc())
+
+        raise HTTPException(status_code=500, detail="Failed to list papers")
 
 
 @app.get("/api/ingestion/status")
@@ -207,25 +210,50 @@ async def get_all_ingestion_status():
     Get the status of all pending ingestion jobs.
     Returns array of job objects.
     """
-    try:
+    try:        
         inspector = celery_app.control.inspect()
-
-        active_tasks = inspector.active()
+        
+        active = inspector.active() or {}
+        reserved = inspector.reserved() or {}
+        scheduled = inspector.scheduled() or {}
 
         jobs = []
-        for worker, tasks in active_tasks.items():
-            for task in tasks:
-                if task["name"] == "ingestion.ingest_paper_task":
+
+        for worker, tasks in active.items():
+            for t in tasks:
+                if t['name'] == "ingestion.ingest_paper_task":
                     jobs.append({
-                        "job_id": task["id"],
-                        "filename": task["args"][0],
-                        "status": task["status"].lower(),
-                        "started_at": task["time_start"],
+                        "id": t['id'], 
+                        "filename": t["kwargs"]["file_path"].replace(str(UPLOAD_DIR) + f"/{t['id']}_", ""),
+                        "status": "PROCESSING", 
+                        "eta": None
                     })
-        
+
+        for worker, tasks in scheduled.items():
+            for t in tasks:
+                if t['name'] == "ingestion.ingest_paper_task":
+                    jobs.append({
+                        "id": t['id'], 
+                        "filename": t["kwargs"]["file_path"].replace(str(UPLOAD_DIR) + f"/{t['id']}_", ""),
+                        "status": "SCHEDULED", 
+                        "eta": t.get('eta')
+                    })
+
+        for worker, tasks in reserved.items():
+            for t in tasks:
+                if t['name'] == "ingestion.ingest_paper_task":
+                    jobs.append({
+                        "id": t['id'],
+                        "filename": t["kwargs"]["file_path"].replace(str(UPLOAD_DIR) + f"/{t['id']}_", ""),
+                        "status": "PENDING",
+                        "eta": None
+                    })
+
         return {"jobs": jobs}
     except Exception as e:
-        log.error("Failed to get ingestion status: %s", e)
+        import traceback
+
+        log.error("Failed to get ingestion status: %s\n%s", e, traceback.format_exc())
 
         raise HTTPException(status_code=500, detail="Failed to get ingestion status")
 
@@ -236,27 +264,34 @@ async def get_ingestion_status(job_id: str):
     Get the status of an ingestion job.
     Returns job status: pending, processing, completed, or failed.
     """
-    result = AsyncResult(job_id, app=celery_app)
-    
-    task_args = {}
-    if isinstance(result.info, dict):
-        file_name = result.info.get("file_path", "Unknown")
-    
-    if not task_args.get("file_path"):
-        inspector = celery_app.control.inspect()
+    try:
+        result = AsyncResult(job_id, app=celery_app)
+        
+        task_args = {}
+        if isinstance(result.info, dict):
+            file_name = result.info.get("file_path", "Unknown")
+        
+        if not task_args.get("file_path"):
+            inspector = celery_app.control.inspect()
 
-        query = inspector.query_task(job_id)
+            query = inspector.query_task(job_id)
 
-        if query:
-            for worker_tasks in query.values():
-                if job_id in worker_tasks:
-                    file_name = worker_tasks[job_id][2].get("file_path", "Unknown")
-    
-    return {
-        "job_id": job_id,
-        "status": result.state.lower(),
-        "file_name": file_name
-    }
+            if query:
+                for worker_tasks in query.values():
+                    if job_id in worker_tasks:
+                        file_name = worker_tasks[job_id][2].get("file_path", "Unknown")
+        
+        return {
+            "job_id": job_id,
+            "status": result.state.lower(),
+            "file_name": file_name
+        }
+    except Exception as e:
+        import traceback
+
+        log.error("Failed to get job status for %s: %s\n%s", job_id, e, traceback.format_exc())
+
+        raise HTTPException(status_code=500, detail="Failed to get job status")
 
 
 @app.post("/search", response_model=SearchResponse)

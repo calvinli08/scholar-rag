@@ -64,18 +64,11 @@ elif not ingestion_result.get("jobs", []):
     st.info("No pending ingestion jobs. All papers are processed and ready!")
 else:
     for job in ingestion_result["jobs"]:
-        with st.expander(f"📄 {job.get('filename', 'Unknown file')} - {job.get('status', 'unknown').upper()}"):
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.write(f"**Status**: {job.get('status', 'unknown')}")
-            with col2:
-                st.write(f"**Progress**: {job.get('progress', 0)}%")
-            with col3:
-                st.write(f"**Started**: {job.get('started_at', 'N/A')}")
-            
-            if job.get("status") == "processing":
-                progress_bar = st.progress(job.get("progress", 0))
-                st.caption(f"Processing {job.get('chunks_processed', 0)}/{job.get('total_chunks', 0)} chunks")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write(f"**File**: {job.get('filename', 'Unknown file')}")
+        with col2:
+            st.write(f"**Status**: {job.get('status', 'unknown')}")
 
 st.divider()
 
