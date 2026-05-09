@@ -8,10 +8,11 @@ from pydantic import BaseModel, Field
 import os
 import uuid
 from pathlib import Path
-
+from celery.result import AsyncResult
+from celery_app import celery_app
+from ingestion.tasks import ingest_paper_task
 from api.retriever import retrieve_chunks
 from api.rag import run_rag_workflow
-from ingestion.pipeline import ingest as ingest_paper
 from logger import get_logger, configure_logging
 from data_models.models import QueryResult, RetrievedChunk
 from db import get_pool
@@ -115,7 +116,7 @@ async def health_check():
 
 
 @app.post("/ingest/upload")
-async def upload_paper(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+async def upload_paper(file: UploadFile = File(...)):
     """
     Upload a PDF paper for ingestion.
     Returns a job ID to track ingestion progress.
@@ -123,50 +124,29 @@ async def upload_paper(background_tasks: BackgroundTasks, file: UploadFile = Fil
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are accepted")
     
-    # Generate unique job ID
-    job_id = str(uuid.uuid4())
+    task_id = str(uuid.uuid4())
     
     # Save uploaded file
-    file_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
+    file_path = UPLOAD_DIR / f"{task_id}_{file.filename}"
     try:
         content = await file.read()
         with open(file_path, "wb") as f:
             f.write(content)
         
-        # Initialize job tracking
-        ingestion_jobs[job_id] = {
-            "status": "pending",
-            "filename": file.filename,
-            "path": str(file_path),
-            "error": None,
-        }
+        result = ingest_paper_task.apply_async(
+            kwargs={"file_path": str(file_path), "paper_id": task_id}, 
+            task_id=task_id,
+            queue="ingestion"
+        )
         
-        # Start ingestion in background
-        background_tasks.add_task(process_ingestion, job_id, file_path)
-        
-        return {"job_id": job_id, "status": "pending"}
+        return {"job_id": task_id, "status": result.status.lower()}
     except Exception as e:
         log.error("Upload failed: %s", e)
+
         if file_path.exists():
             file_path.unlink()
+
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-
-
-async def process_ingestion(job_id: str, file_path: Path):
-    """Process paper ingestion in the background."""
-    try:
-        ingestion_jobs[job_id]["status"] = "processing"
-        log.info("Starting ingestion for job %s: %s", job_id, file_path)
-        
-        # Run ingestion pipeline
-        ingest_paper(str(file_path))
-        
-        ingestion_jobs[job_id]["status"] = "completed"
-        log.info("Ingestion completed for job %s", job_id)
-    except Exception as e:
-        log.error("Ingestion failed for job %s: %s", job_id, e)
-        ingestion_jobs[job_id]["status"] = "failed"
-        ingestion_jobs[job_id]["error"] = str(e)
 
 
 @app.get("/api/papers")
@@ -228,23 +208,26 @@ async def get_all_ingestion_status():
     Returns array of job objects.
     """
     try:
+        inspector = celery_app.control.inspect()
+
+        active_tasks = inspector.active()
+
         jobs = []
-        for job_id, job in ingestion_jobs.items():
-            if job["status"] in ["pending", "processing"]:
-                jobs.append({
-                    "job_id": job_id,
-                    "filename": job["filename"],
-                    "status": job["status"],
-                    "progress": job.get("progress", 0),
-                    "started_at": job.get("started_at", "N/A"),
-                    "chunks_processed": job.get("chunks_processed", 0),
-                    "total_chunks": job.get("total_chunks", 0)
-                })
+        for worker, tasks in active_tasks.items():
+            for task in tasks:
+                if task["name"] == "ingestion.ingest_paper_task":
+                    jobs.append({
+                        "job_id": task["id"],
+                        "filename": task["args"][0],
+                        "status": task["status"].lower(),
+                        "started_at": task["time_start"],
+                    })
         
         return {"jobs": jobs}
     except Exception as e:
         log.error("Failed to get ingestion status: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+
+        raise HTTPException(status_code=500, detail="Failed to get ingestion status")
 
 
 @app.get("/ingest/status/{job_id}")
@@ -253,15 +236,26 @@ async def get_ingestion_status(job_id: str):
     Get the status of an ingestion job.
     Returns job status: pending, processing, completed, or failed.
     """
-    if job_id not in ingestion_jobs:
-        raise HTTPException(status_code=404, detail="Job not found")
+    result = AsyncResult(job_id, app=celery_app)
     
-    job = ingestion_jobs[job_id]
+    task_args = {}
+    if isinstance(result.info, dict):
+        file_name = result.info.get("file_path", "Unknown")
+    
+    if not task_args.get("file_path"):
+        inspector = celery_app.control.inspect()
+
+        query = inspector.query_task(job_id)
+
+        if query:
+            for worker_tasks in query.values():
+                if job_id in worker_tasks:
+                    file_name = worker_tasks[job_id][2].get("file_path", "Unknown")
+    
     return {
         "job_id": job_id,
-        "status": job["status"],
-        "filename": job["filename"],
-        "error": job["error"],
+        "status": result.state.lower(),
+        "file_name": file_name
     }
 
 
