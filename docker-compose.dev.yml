@@ -36,6 +36,31 @@ services:
       db:
         condition: service_healthy
 
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  celery_worker:
+    build: 
+      context: ./
+      dockerfile: ./docker/Dockerfile.queue
+    depends_on:
+      - redis
+      - db
+    environment:
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/0}
+    volumes:
+      - .:/home/app
+    command: sh -c "uv sync && exec uv run celery -A celery_app worker -Q ingestion --loglevel=info"
+
 volumes:
   pgdata:
+    driver: local
+  redis_data:
     driver: local
