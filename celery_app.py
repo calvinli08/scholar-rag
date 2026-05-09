@@ -20,5 +20,6 @@ celery_app.conf.update(
     task_time_limit=300,
     task_soft_time_limit=240,
     broker_connection_retry_on_startup=True,
+    broker_transport_options={'visibility_timeout': 600},
     task_acks_late=True,
 )
