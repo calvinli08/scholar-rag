@@ -3,7 +3,7 @@ from typing import TypedDict, List, Dict, Any, Optional
 from langgraph.graph import StateGraph, END
 from langchain_core.prompts import ChatPromptTemplate
 from langfuse.langchain import CallbackHandler
-from deepeval.metrics import FaithfulnessMetric
+from deepeval.metrics import FaithfulnessMetric, AnswerRelevancyMetric
 from deepeval.test_case import LLMTestCase
 
 from api.retriever import retrieve_chunks
@@ -124,6 +124,7 @@ def get_eval_llm_instance():
 
 # Configuration
 GROUNDING_THRESHOLD = 0.9
+ANSWER_RELEVANCY_THRESHOLD = 0.8
 MAX_RETRIES = 2
 
 
@@ -197,6 +198,7 @@ class RAGState(TypedDict):
     chunks: List[Dict[str, Any]]
     generated_answer: str
     grounding_score: float
+    answer_relevancy_score: float
     eval_feedback: str
     supervisor_decision: str
     top_k: int
@@ -288,23 +290,34 @@ def build_rag_graph():
 
         evaluation_llm = get_eval_llm_instance()
 
-        metric = FaithfulnessMetric(
+        faithfulness_metric = FaithfulnessMetric(
             threshold=GROUNDING_THRESHOLD,
             model=evaluation_llm
         )
 
-        try:
-            metric.measure(test_case)
+        answer_relevancy_metric = AnswerRelevancyMetric(
+            threshold=ANSWER_RELEVANCY_THRESHOLD,
+            model=evaluation_llm
+            include_reason=True
+        )
 
-            score = metric.score
-            feedback = metric.reason[:1000]  # Limit feedback length for prompt
+        try:
+            faithfulness_metric.measure(test_case)
+            answer_relevancy_metric.measure(test_case)
+
+            faithfulness_score = faithfulness_metric.score
+            answer_relevancy_score = answer_relevancy_metric.score
+
+            feedback = answer_relevancy_metric.reason[:1000]  # Limit feedback length for prompt
         except Exception as e:
             log.error("Evaluation error: %s", e)
-            score = 0.0
+            faithfulness_score = 0.0
+            answer_relevancy_score = 0.0
             feedback = "Evaluation failed with error"
 
         return {
-            "grounding_score": score,
+            "grounding_score": faithfulness_score,
+            "answer_relevancy_score": answer_relevancy_score,
             "eval_feedback": feedback
         }
 
@@ -322,20 +335,26 @@ def build_rag_graph():
             (
                 "system",
                 "You are the supervisor agent in a multi-agent RAG system. "
-                "Before you were invoked, an evaluation agent assessed the RAG-generated answer for faithfulness and produced a numeric grounding score and feedback. "
-                "Examine both the numeric faithfulness score and the feedback. Determine whether the score is high enough and whether the justification is strong enough to terminate the workflow, or whether to re-generate the answer. "
-                "The numeric faithfulness score is a float number between 0 and 1, where a higher score indicates the answer is more faithful to the retrieved context. A score above 0.9 is generally considered good, but also consider the feedback justification provided by the evaluation agent."
+                "Before you were invoked, an evaluation agent assessed the RAG-generated answer for faithfulness and answer relevancy and produced a numeric scores for each, including feedback. "
+                "Examine both the numeric evaluation scores and the feedback. Determine whether the scores are high enough and whether the justification is strong enough to terminate the workflow, or whether to re-generate the answer. "
+                "The numeric scores are float numbers between 0 and 1, where a higher score indicates the answer is more faithful/relevant. A score above 0.9 is generally considered good, but also consider the feedback justification provided by the evaluation agent."
             ),
             (
                 "human", 
-                "The numeric faithfulness score is: {grounding_score}. The evaluation agent feedback is: {eval_feedback}. "
+                "The numeric faithfulness score is: {grounding_score}. " 
+                "The numeric answer relevancy score is: {answer_relevancy_score}. " 
+                "The evaluation agent feedback is: {eval_feedback}. "
                 "Based on the above, should the generation agent try to generate a new answer (type 'generate') or is the current answer good enough to return to the user (type 'end')? "
                 "Respond with only 'generate' or 'end'."
             )
         ])
 
         chain = prompt | llm
-        response = chain.invoke({"grounding_score": state["grounding_score"], "eval_feedback": state["eval_feedback"]})
+        response = chain.invoke({
+            "grounding_score": state["grounding_score"],
+            "answer_relevancy_score": state["answer_relevancy_score"],
+            "eval_feedback": state["eval_feedback"]
+        })
 
         return {
             "supervisor_decision": response.content.strip().lower()
@@ -389,6 +408,7 @@ async def run_rag_workflow(
         "use_reranker": use_reranker,
         "generated_answer": "",
         "grounding_score": 0.0,
+        "answer_relevancy_score": 0.0,
         "retry_count": 0,
         "error": None
     })
@@ -417,6 +437,7 @@ async def run_rag_workflow(
             "answer": final_state["generated_answer"],
             "sources": final_state["chunks"],
             "grounding_score": final_state["grounding_score"],
+            "answer_relevancy_score": final_state["answer_relevancy_score"],
             "retries": final_state["retry_count"] - 1 if final_state["retry_count"] > 0 else 0
         }
     except Exception as e:
