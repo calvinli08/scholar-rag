@@ -83,9 +83,8 @@ Switch backends with a single env variable: `LLM_BACKEND=vllm|openai|gemini`
 
 ### 📊 Evaluation Built In
 RAG without eval is guesswork. ScholarRAG ships with DeepEval to measure:
-- **Faithfulness** — does the answer contradict any retrieved chunk? (LLM-as-judge)
-- **Answer Recall** — does the answer cover the ground truth key points?
-- **Context Precision** — are retrieved chunks actually relevant to the question?
+- **Faithfulness** — does the answer contradict any retrieved chunk?
+- **Answer Relevancy** — is the answer relavant to the input query?
 
 ---
 
@@ -155,8 +154,7 @@ HyDE generates one high-quality hypothetical document. Multi-query generates N q
 ## Future Work
 
 1. Add horizontal scaling. A simple setup would be an nginx reverse proxy that routes to several copies of the web application hosted in Docker containers. For a more mature production setup, Kubernetes auto-scaling of web app containers, combined with read replicas of the PostgreSQL database, would be the primary choice.
-2. Offload ingestion jobs to a dedicated queue worker setup (likely Redis and celery)
-3. Testing faithfulness, recall, and precision across several hundred papers and queries simultaneously. I don't currently have the hardware for this.
+2. Testing faithfulness, recall, and precision across several hundred papers and queries simultaneously. I don't currently have the hardware for this.
 
 ## Bug Reports
 
