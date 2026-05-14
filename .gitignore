@@ -99,3 +99,5 @@ downloads/*
 .qwen/
 
 minio.license
+
+infrastructure/secret.tfvars
